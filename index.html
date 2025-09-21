@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PTFS ATIS / Flightplans</title>
+  <style>
+    :root{--accent:#0b5cff;--bg:#0f1724;--card:#111827;--muted:#9aa4ba}
+    html,body{height:100%;margin:0;font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial}
+    body{background:linear-gradient(180deg,#071024 0%, #071833 100%);color:#e6eef8;padding:20px}
+    .container{max-width:1100px;margin:0 auto}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    h1{font-size:20px;margin:0}
+    .card{background:rgba(255,255,255,0.03);padding:16px;border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6);}
+    form .row{display:flex;gap:10px;margin-bottom:10px}
+    label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+    input,select,textarea{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
+    textarea{min-height:80px}
+    button{background:var(--accent);border:none;padding:8px 12px;border-radius:8px;color:white;cursor:pointer}
+    .muted{color:var(--muted);font-size:13px}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:10px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.03);font-size:13px}
+    .actions button{margin-right:6px}
+    .flex{display:flex;gap:10px;align-items:center}
+    .right{margin-left:auto}
+    .pill{background:rgba(255,255,255,0.03);padding:6px 8px;border-radius:999px;font-weight:600}
+    .small{font-size:12px;padding:6px 8px}
+    .danger{background:#ff4d4f}
+    footer{margin-top:16px;color:var(--muted);font-size:13px}
+    @media (max-width:720px){.row{flex-direction:column}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>PTFS ATIS — Flightplan manager</h1>
+        <div class="muted">Lavet til PTFS Roblox — Piloter kan indsende flight plans, ATC kan se dem</div>
+      </div>
+      <div class="flex">
+        <div class="pill" id="status-pill">Ikke logget ind</div>
+        <button id="login-btn" class="small">ATC login</button>
+      </div>
+    </header>
+
+    <div class="card">
+      <h2 style="margin-top:0">Indsend Flightplan</h2>
+      <form id="fp-form">
+        <div class="row">
+          <div style="flex:1">
+            <label for="callsign">Callsign</label>
+            <input id="callsign" required placeholder="EK123 / PTFS001">
+          </div>
+          <div style="flex:1">
+            <label for="type">Aircraft type</label>
+            <input id="type" placeholder="B738, C172">
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:1">
+            <label for="dep">Departure (ICAO)</label>
+            <input id="dep" placeholder="EKCH">
+          </div>
+          <div style="flex:1">
+            <label for="arr">Arrival (ICAO)</label>
+            <input id="arr" placeholder="EKDK">
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:1">
+            <label for="alt">Cruise altitude</label>
+            <input id="alt" placeholder="FL120 / 3500ft">
+          </div>
+          <div style="flex:1">
+            <label for="eta">Estimated time enroute</label>
+            <input id="eta" placeholder="00:45">
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:1">
+            <label for="rules">Flight rules</label>
+            <select id="rules">
+              <option value="IFR">IFR</option>
+              <option value="VFR">VFR</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:8px">
+          <label for="route">Route / SID / STAR</label>
+          <textarea id="route" placeholder="RUTE / SID / STAR"></textarea>
+        </div>
+        <div style="margin-bottom:8px">
+          <label for="remarks">Remarks</label>
+          <input id="remarks" placeholder="Remarks, emergency, fuel, pax">
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button type="submit">Send flightplan</button>
+          <div class="muted">Plans gemmes lokalt. Brug 'Eksport' for at dele.</div>
+        </div>
+      </form>
+    </div>
+
+    <div style="height:14px"></div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <h2 style="margin:0">Alle flightplans</h2>
+        <div>
+          <button id="export-btn" class="small">Eksport</button>
+          <button id="import-btn" class="small">Import</button>
+          <button id="clear-btn" class="small danger">Slet alle</button>
+        </div>
+      </div>
+
+      <div id="fp-area" style="margin-top:12px">
+        <div class="muted">Ingen flightplans endnu.</div>
+      </div>
+
+    </div>
+
+    <footer>
+      <div>Tip: Sæt en kort PIN i koden for ATC (se README-comment i toppen) eller tilslut en rigtig backend for multi-user.</div>
+    </footer>
+  </div>
+
+  <div id="login-modal" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,0.6)">
+    <div style="width:320px;background:#081028;padding:18px;border-radius:12px;box-shadow:0 10px 30px rgba(2,6,23,0.7)">
+      <h3 style="margin-top:0">ATC login</h3>
+      <div class="muted">Indtast PIN for at se og håndtere flightplans</div>
+      <div style="margin-top:10px">
+        <input id="pin-input" placeholder="PIN">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+        <button id="pin-cancel" class="small">Annuller</button>
+        <button id="pin-ok" class="small">Log ind</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const ATC_PIN = 'ATC123';
+    const STORAGE_KEY = 'ptfs_flightplans_v1';
+
+    function loadPlans(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+      }catch(e){return []}
+    }
+    function savePlans(plans){ localStorage.setItem(STORAGE_KEY, JSON.stringify(plans)); }
+
+    const form = document.getElementById('fp-form');
+    const fpArea = document.getElementById('fp-area');
+    const statusPill = document.getElementById('status-pill');
+    const loginBtn = document.getElementById('login-btn');
+    const loginModal = document.getElementById('login-modal');
+    const pinInput = document.getElementById('pin-input');
+    const pinOk = document.getElementById('pin-ok');
+    const pinCancel = document.getElementById('pin-cancel');
+    const exportBtn = document.getElementById('export-btn');
+    const importBtn = document.getElementById('import-btn');
+    const clearBtn = document.getElementById('clear-btn');
+
+    let isATC = false;
+
+    function renderPlans(){
+      const plans = loadPlans();
+      if(plans.length === 0){ fpArea.innerHTML = '<div class="muted">Ingen flightplans endnu.</div>'; return }
+
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+      thead.innerHTML = '<tr><th>Callsign</th><th>Dep → Arr</th><th>Rules</th><th>Squawk</th><th>Type / Alt</th><th>Route</th><th>Remarks</th><th>Indsendt</th>' + (isATC ? '<th>ATC</th>' : '') + '</tr>';
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      plans.forEach((p, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${escapeHtml(p.callsign)}</td>
+                        <td>${escapeHtml(p.dep)} → ${escapeHtml(p.arr)}</td>
+                        <td>${escapeHtml(p.rules)}</td>
+                        <td>${escapeHtml(p.squawk)}</td>
+                        <td>${escapeHtml(p.type)} / ${escapeHtml(p.alt)}</td>
+                        <td style="max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(p.route)}</td>
+                        <td>${escapeHtml(p.remarks)}</td>
+                        <td>${new Date(p.created).toLocaleString()}</td>`;
+        if(isATC){
+          const td = document.createElement('td');
+          td.className = 'actions';
+          const ackBtn = document.createElement('button'); ackBtn.textContent = p.ack ? 'Ack ✓' : 'Ack'; ackBtn.className='small';
+          ackBtn.addEventListener('click', ()=>{ toggleAck(i); });
+          const delBtn = document.createElement('button'); delBtn.textContent='Slet'; delBtn.className='small';
+          delBtn.addEventListener('click', ()=>{ deletePlan(i); });
+          td.appendChild(ackBtn); td.appendChild(delBtn);
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      fpArea.innerHTML = '';
+      fpArea.appendChild(table);
+    }
+
+    function escapeHtml(s){ if(!s && s!==0) return ''; return String(s).replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\\':'\\\\','"':'&quot;'}[c])); }
+
+    function toggleAck(i){
+      const plans = loadPlans();
+      plans[i].ack = !plans[i].ack;
+      savePlans(plans); renderPlans();
+    }
+    function deletePlan(i){
+      const plans = loadPlans(); plans.splice(i,1); savePlans(plans); renderPlans();
+    }
+
+    function generateSquawk(){
+      return Math.floor(1000 + Math.random() * 9000).toString();
+    }
+
+    form.addEventListener('submit', (ev)=>{
+      ev.preventDefault();
+      const p = {
+        callsign: document.getElementById('callsign').value.trim(),
+        type: document.getElementById('type').value.trim(),
+        dep: document.getElementById('dep').value.trim(),
+        arr: document.getElementById('arr').value.trim(),
+        alt: document.getElementById('alt').value.trim(),
+        eta: document.getElementById('eta').value.trim(),
+        rules: document.getElementById('rules').value,
+        squawk: generateSquawk(),
+        route: document.getElementById('route').value.trim(),
+        remarks: document.getElementById('remarks').value.trim(),
+        created: new Date().toISOString(),
+        ack: false
+      };
+      const plans = loadPlans(); plans.unshift(p); savePlans(plans); renderPlans();
+      form.reset();
+      alert('Flightplan sendt! Squawk: '+p.squawk);
+    });
+
+    loginBtn.addEventListener('click', ()=>{
+      if(isATC){
+        if(confirm('Log ud som ATC?')){ isATC=false; statusPill.textContent='Ikke logget ind'; loginBtn.textContent='ATC login'; renderPlans(); }
+      } else { loginModal.style.display='flex'; pinInput.value=''; pinInput.focus(); }
+    });
+    pinCancel.addEventListener('click', ()=>{ loginModal.style.display='none'; });
+    pinOk.addEventListener('click', ()=>{ const v=pinInput.value.trim(); if(v===ATC_PIN){ isATC=true; statusPill.textContent='Logget ind som ATC'; loginModal.style.display='none'; renderPlans(); loginBtn.textContent='Log ud'; } else { alert('Forkert PIN'); } });
+
+    exportBtn.addEventListener('click', ()=>{
+      const plans = loadPlans();
+      const payload = JSON.stringify(plans, null, 2);
+      prompt('Kopier JSON for at dele/importere flightplans:', payload);
+    });
+    importBtn.addEventListener('click', ()=>{
+      const raw = prompt('Indsæt JSON for at importere (erstatter eksisterende):');
+      if(!raw) return;
+      try{
+        const data = JSON.parse(raw);
+        if(!Array.isArray(data)) throw new Error('Forventet array');
+        if(confirm('Overskriv eksisterende flightplans?')){ savePlans(data); renderPlans(); alert('Importeret!'); }
+      }catch(e){ alert('Kunne ikke parse JSON: '+e.message); }
+    });
+    clearBtn.addEventListener('click', ()=>{ if(confirm('Slet alle flightplans?')){ savePlans([]); renderPlans(); } });
+
+    renderPlans();
+  </script>
+</body>
+</html>
