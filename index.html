@@ -4,146 +4,151 @@
   <meta charset="utf-8">
   <title>PTFS ATIS - Flightplan Manager</title>
   <style>
-    body { font-family: Arial, sans-serif; background:#0f172a; color:white; padding:20px; }
-    h1 { color:#38bdf8; }
+    body { font-family: Arial,sans-serif; background:#0f172a; color:white; padding:20px; }
+    h1,h2 { color:#38bdf8; }
     form, .panel { background:#1e293b; padding:15px; border-radius:8px; margin-bottom:20px; }
     label { display:block; margin-top:10px; }
-    input, select { width:100%; padding:8px; border-radius:4px; border:none; margin-top:5px; }
-    button { margin-top:15px; padding:10px; border:none; border-radius:6px; background:#38bdf8; color:black; font-weight:bold; cursor:pointer; }
+    input, select, button { width:100%; padding:8px; border-radius:4px; border:none; margin-top:5px; }
+    button { cursor:pointer; font-weight:bold; background:#38bdf8; color:black; }
     ul { list-style:none; padding:0; }
     li { background:#1e293b; margin:5px 0; padding:10px; border-radius:6px; display:flex; justify-content:space-between; align-items:center; }
     .hidden { display:none; }
+    .status-btn { margin-left:5px; padding:4px 6px; border-radius:4px; font-size:12px; }
   </style>
 </head>
 <body>
-  <h1>PTFS ATIS - Flightplans</h1>
+<h1>PTFS ATIS - Flightplans</h1>
 
-  <!-- Flightplan form for piloter -->
-  <form id="fp-form">
-    <label>Callsign
-      <input id="callsign" required>
-    </label>
-    <label>Aircraft type
-      <input id="type" required>
-    </label>
-    <label>Departure (ICAO)
-      <input id="dep" required>
-    </label>
-    <label>Arrival (ICAO)
-      <input id="arr" required>
-    </label>
-    <label>Cruise altitude
-      <input id="alt" required>
-    </label>
-    <label>Estimated time enroute
-      <input id="eta" required placeholder="00:45">
-    </label>
-    <label>Flight rules
-      <select id="rules">
-        <option value="IFR">IFR</option>
-        <option value="VFR">VFR</option>
-      </select>
-    </label>
-    <button type="submit">Submit Flightplan</button>
-  </form>
+<!-- Pilot flightplan form -->
+<form id="fp-form">
+  <label>Callsign <input id="callsign" required></label>
+  <label>Aircraft type <input id="type" required></label>
+  <label>Departure (ICAO) <input id="dep" required></label>
+  <label>Arrival (ICAO) <input id="arr" required></label>
+  <label>Cruise altitude <input id="alt" required></label>
+  <label>ETA <input id="eta" required placeholder="00:45"></label>
+  <label>Flight rules
+    <select id="rules">
+      <option value="IFR">IFR</option>
+      <option value="VFR">VFR</option>
+    </select>
+  </label>
+  <button type="submit">Submit Flightplan</button>
+</form>
 
-  <h2>Active Flightplans</h2>
-  <ul id="plans"></ul>
+<h2>Active Flightplans</h2>
+<ul id="plans"></ul>
 
-  <!-- ATC Login -->
-  <div class="panel">
-    <h2>ATC Login</h2>
-    <input type="password" id="atc-pin" placeholder="Enter ATC PIN">
-    <button id="login-btn">Login</button>
-  </div>
+<!-- ATC Login -->
+<div class="panel">
+  <h2>ATC Login</h2>
+  <input type="password" id="atc-pin" placeholder="Enter ATC PIN">
+  <button id="login-btn">Login</button>
+</div>
 
-  <!-- ATC Panel (kun synlig for ATC) -->
-  <div id="atc-panel" class="panel hidden">
-    <h2>ATC Panel</h2>
-    <p>Velkommen, ATC! Du kan cleare/slette flightplans.</p>
-    <ul id="atc-plans"></ul>
-  </div>
+<!-- ATC Panel -->
+<div id="atc-panel" class="panel hidden">
+  <h2>ATC Panel</h2>
+  <p>Velkommen, ATC! Du kan ændre status eller slette flightplans.</p>
+  <ul id="atc-plans"></ul>
+</div>
 
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
-  <script>
-    // Din Firebase config
-    const firebaseConfig = {
-      apiKey: "AIzaSyAqmFP49513SlEYDtPGDR1gQ2sttbCEVps",
-      authDomain: "ptfsfligtplan.firebaseapp.com",
-      projectId: "ptfsfligtplan",
-      storageBucket: "ptfsfligtplan.appspot.com",
-      messagingSenderId: "109109884359",
-      appId: "1:109109884359:web:c69695833bbe25c80b55e2",
-      measurementId: "G-ZERL7Y4ERS"
+<script>
+  // Firebase config – erstat med din egen fra Firebase Console
+  const firebaseConfig = {
+    apiKey: "DIN_API_KEY",
+    authDomain: "DIT_PROJECT.firebaseapp.com",
+    projectId: "DIT_PROJECT",
+    storageBucket: "DIT_PROJECT.appspot.com",
+    messagingSenderId: "DIN_SENDER_ID",
+    appId: "DIN_APP_ID",
+    measurementId: "DIN_MEASUREMENT_ID"
+  };
+
+  // Init Firebase
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  // Autogenerér squawk
+  function generateSquawk() {
+    return Math.floor(1000 + Math.random()*9000);
+  }
+
+  // Pilot submit flightplan
+  document.getElementById("fp-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const plan = {
+      callsign: document.getElementById("callsign").value,
+      type: document.getElementById("type").value,
+      dep: document.getElementById("dep").value,
+      arr: document.getElementById("arr").value,
+      alt: document.getElementById("alt").value,
+      eta: document.getElementById("eta").value,
+      rules: document.getElementById("rules").value,
+      squawk: generateSquawk(),
+      status: "Filed",
+      time: new Date().toISOString()
     };
+    await db.collection("flightplans").add(plan);
+    alert("Flightplan submitted ✅ Squawk: " + plan.squawk);
+    e.target.reset();
+  });
 
-    // Init Firebase
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
-
-    // Submit flightplan
-    document.getElementById("fp-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const plan = {
-        callsign: document.getElementById("callsign").value,
-        type: document.getElementById("type").value,
-        dep: document.getElementById("dep").value,
-        arr: document.getElementById("arr").value,
-        alt: document.getElementById("alt").value,
-        eta: document.getElementById("eta").value,
-        rules: document.getElementById("rules").value,
-        time: new Date().toISOString(),
-        squawk: Math.floor(1000 + Math.random() * 9000)
-      };
-      await db.collection("flightplans").add(plan);
-      alert("Flightplan submitted ✅ Squawk: " + plan.squawk);
-      e.target.reset();
+  // Live view for pilots
+  db.collection("flightplans").orderBy("time","desc").onSnapshot(snapshot => {
+    const list = document.getElementById("plans");
+    list.innerHTML="";
+    snapshot.forEach(doc => {
+      const d = doc.data();
+      const li = document.createElement("li");
+      li.textContent = `${d.callsign} | ${d.type} | ${d.dep}→${d.arr} | ${d.rules} | FL:${d.alt} | ETA:${d.eta} | Squawk:${d.squawk} | Status:${d.status}`;
+      list.appendChild(li);
     });
+  });
 
-    // Vis flightplans til alle (piloter/ATC)
-    db.collection("flightplans").orderBy("time", "desc").onSnapshot(snapshot => {
-      const list = document.getElementById("plans");
-      list.innerHTML = "";
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        const li = document.createElement("li");
-        li.textContent = `${data.callsign} | ${data.type} | ${data.dep} → ${data.arr} | ${data.rules} | FL:${data.alt} | ETA:${data.eta} | Squawk:${data.squawk}`;
+  // ATC Login
+  const ATC_PIN = "1234"; // skift kode
+  document.getElementById("login-btn").addEventListener("click", () => {
+    const pin = document.getElementById("atc-pin").value;
+    if(pin===ATC_PIN){
+      document.getElementById("atc-panel").classList.remove("hidden");
+      loadAtcPanel();
+    } else alert("Forkert PIN!");
+  });
+
+  // ATC panel
+  function loadAtcPanel(){
+    db.collection("flightplans").orderBy("time","desc").onSnapshot(snapshot=>{
+      const list = document.getElementById("atc-plans");
+      list.innerHTML="";
+      snapshot.forEach(doc=>{
+        const d=doc.data();
+        const li=document.createElement("li");
+        li.textContent = `${d.callsign} | ${d.dep}→${d.arr} | ${d.rules} | Squawk:${d.squawk} | Status:${d.status}`;
+
+        // Status knapper
+        ["Filed","Cleared","Taxi","Airborne"].forEach(s=>{
+          const btn=document.createElement("button");
+          btn.className="status-btn";
+          btn.textContent=s;
+          btn.onclick=()=>db.collection("flightplans").doc(doc.id).update({status:s});
+          li.appendChild(btn);
+        });
+
+        // Delete
+        const del=document.createElement("button");
+        del.textContent="❌ Slet";
+        del.onclick=()=>db.collection("flightplans").doc(doc.id).delete();
+        li.appendChild(del);
+
         list.appendChild(li);
       });
     });
-
-    // ATC Login
-    const ATC_PIN = "1234"; // 🔑 Skift denne til din hemmelige kode
-    document.getElementById("login-btn").addEventListener("click", () => {
-      const pin = document.getElementById("atc-pin").value;
-      if (pin === ATC_PIN) {
-        document.getElementById("atc-panel").classList.remove("hidden");
-        loadAtcPlans();
-      } else {
-        alert("Forkert PIN!");
-      }
-    });
-
-    // ATC-panel viser flightplans med delete-knap
-    function loadAtcPlans() {
-      db.collection("flightplans").orderBy("time", "desc").onSnapshot(snapshot => {
-        const list = document.getElementById("atc-plans");
-        list.innerHTML = "";
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          const li = document.createElement("li");
-          li.textContent = `${data.callsign} | ${data.dep} → ${data.arr} | ${data.rules} | Squawk:${data.squawk}`;
-          const btn = document.createElement("button");
-          btn.textContent = "❌ Slet";
-          btn.onclick = () => db.collection("flightplans").doc(doc.id).delete();
-          li.appendChild(btn);
-          list.appendChild(li);
-        });
-      });
-    }
-  </script>
+  }
+</script>
 </body>
 </html>
