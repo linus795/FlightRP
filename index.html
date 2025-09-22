@@ -6,17 +6,19 @@
   <style>
     body { font-family: Arial, sans-serif; background:#0f172a; color:white; padding:20px; }
     h1 { color:#38bdf8; }
-    form { background:#1e293b; padding:15px; border-radius:8px; margin-bottom:20px; }
+    form, .panel { background:#1e293b; padding:15px; border-radius:8px; margin-bottom:20px; }
     label { display:block; margin-top:10px; }
     input, select { width:100%; padding:8px; border-radius:4px; border:none; margin-top:5px; }
     button { margin-top:15px; padding:10px; border:none; border-radius:6px; background:#38bdf8; color:black; font-weight:bold; cursor:pointer; }
     ul { list-style:none; padding:0; }
-    li { background:#1e293b; margin:5px 0; padding:10px; border-radius:6px; }
+    li { background:#1e293b; margin:5px 0; padding:10px; border-radius:6px; display:flex; justify-content:space-between; align-items:center; }
+    .hidden { display:none; }
   </style>
 </head>
 <body>
   <h1>PTFS ATIS - Flightplans</h1>
 
+  <!-- Flightplan form for piloter -->
   <form id="fp-form">
     <label>Callsign
       <input id="callsign" required>
@@ -48,12 +50,26 @@
   <h2>Active Flightplans</h2>
   <ul id="plans"></ul>
 
+  <!-- ATC Login -->
+  <div class="panel">
+    <h2>ATC Login</h2>
+    <input type="password" id="atc-pin" placeholder="Enter ATC PIN">
+    <button id="login-btn">Login</button>
+  </div>
+
+  <!-- ATC Panel (kun synlig for ATC) -->
+  <div id="atc-panel" class="panel hidden">
+    <h2>ATC Panel</h2>
+    <p>Velkommen, ATC! Du kan cleare/slette flightplans.</p>
+    <ul id="atc-plans"></ul>
+  </div>
+
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
   <script>
-    // Din Firebase config (indsæt fra Firebase console)
+    // Din Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyAqmFP49513SlEYDtPGDR1gQ2sttbCEVps",
       authDomain: "ptfsfligtplan.firebaseapp.com",
@@ -68,10 +84,9 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // Form submit
+    // Submit flightplan
     document.getElementById("fp-form").addEventListener("submit", async (e) => {
       e.preventDefault();
-
       const plan = {
         callsign: document.getElementById("callsign").value,
         type: document.getElementById("type").value,
@@ -81,15 +96,14 @@
         eta: document.getElementById("eta").value,
         rules: document.getElementById("rules").value,
         time: new Date().toISOString(),
-        squawk: Math.floor(1000 + Math.random() * 9000) // 4 cifre
+        squawk: Math.floor(1000 + Math.random() * 9000)
       };
-
       await db.collection("flightplans").add(plan);
       alert("Flightplan submitted ✅ Squawk: " + plan.squawk);
       e.target.reset();
     });
 
-    // Live update
+    // Vis flightplans til alle (piloter/ATC)
     db.collection("flightplans").orderBy("time", "desc").onSnapshot(snapshot => {
       const list = document.getElementById("plans");
       list.innerHTML = "";
@@ -100,6 +114,36 @@
         list.appendChild(li);
       });
     });
+
+    // ATC Login
+    const ATC_PIN = "1234"; // 🔑 Skift denne til din hemmelige kode
+    document.getElementById("login-btn").addEventListener("click", () => {
+      const pin = document.getElementById("atc-pin").value;
+      if (pin === ATC_PIN) {
+        document.getElementById("atc-panel").classList.remove("hidden");
+        loadAtcPlans();
+      } else {
+        alert("Forkert PIN!");
+      }
+    });
+
+    // ATC-panel viser flightplans med delete-knap
+    function loadAtcPlans() {
+      db.collection("flightplans").orderBy("time", "desc").onSnapshot(snapshot => {
+        const list = document.getElementById("atc-plans");
+        list.innerHTML = "";
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          const li = document.createElement("li");
+          li.textContent = `${data.callsign} | ${data.dep} → ${data.arr} | ${data.rules} | Squawk:${data.squawk}`;
+          const btn = document.createElement("button");
+          btn.textContent = "❌ Slet";
+          btn.onclick = () => db.collection("flightplans").doc(doc.id).delete();
+          li.appendChild(btn);
+          list.appendChild(li);
+        });
+      });
+    }
   </script>
 </body>
 </html>
