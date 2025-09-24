@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8">
   <title>PTFS ATIS - Flightplan Manager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body { font-family: Arial,sans-serif; background:#0f172a; color:white; padding:20px; }
+    body { font-family: Arial, sans-serif; background:#0f172a; color:white; padding:20px; }
     h1,h2 { color:#38bdf8; }
     form, .panel { background:#1e293b; padding:15px; border-radius:8px; margin-bottom:20px; }
     label { display:block; margin-top:10px; }
@@ -42,26 +43,25 @@
 <!-- ATC Login -->
 <div class="panel">
   <h2>ATC Login</h2>
-  <label>Navn <input type="AeroATC" id="atc-name" placeholder="ATC navn"></label>
-  <label>PIN <input type="1234" id="atc-pin" placeholder="Enter ATC PIN"></label>
+  <label>Navn <input type="text" id="atc-name" placeholder="ATC navn"></label>
+  <label>PIN <input type="password" id="atc-pin" placeholder="Enter ATC PIN"></label>
   <label>Lufthavn
     <select id="atc-airport">
-  <option value="IRFD">Greater Rockford Airport</option>
-  <option value="ILKL">Lukla International Airport</option>
-  <option value="IPPH">Perth International Airport</option>
-  <option value="ITKO">Tokyo International Airport</option>
-  <option value="ILAR">Larnaca International Airport</option>
-  <option value="IPAP">Paphos International Airport</option>
-  <option value="IGRV">Grindavik Airport</option>
-  <option value="IDCS">Saba International Airport</option>
-  <option value="IGAR">Airbase Garry</option>
-  <option value="IBLT">Boltic Airfield</option>
-  <option value="IHEN">Henstridge Airfield</option>
-  <option value="ISCM">RAF Scampton</option>
-  <option value="IJAF">Al Najaf Airfield</option>
-  <option value="IZOL">Izolirani Airport</option>
-  <option value="ITRC">Training Centre</option>
-      <!-- Tilføj flere lufthavne her -->
+      <option value="IRFD">Greater Rockford Airport</option>
+      <option value="ILKL">Lukla International Airport</option>
+      <option value="IPPH">Perth International Airport</option>
+      <option value="ITKO">Tokyo International Airport</option>
+      <option value="ILAR">Larnaca International Airport</option>
+      <option value="IPAP">Paphos International Airport</option>
+      <option value="IGRV">Grindavik Airport</option>
+      <option value="IDCS">Saba International Airport</option>
+      <option value="IGAR">Airbase Garry</option>
+      <option value="IBLT">Boltic Airfield</option>
+      <option value="IHEN">Henstridge Airfield</option>
+      <option value="ISCM">RAF Scampton</option>
+      <option value="IJAF">Al Najaf Airfield</option>
+      <option value="IZOL">Izolirani Airport</option>
+      <option value="ITRC">Training Centre</option>
     </select>
   </label>
   <label>Rolle
@@ -137,29 +137,22 @@
     });
   });
 
-  // ATC login data – navn:PIN:lufthavn:rolle
-  const ATC_USERS = [
-    {name:"Copenhagen_ATC", pin:"1234", airport:"IRFD", role:"Ground"},
-    {name:"Aarhus_ATC", pin:"2345", airport:"IPPH", role:"Tower"},
-    {name:"Billund_ATC", pin:"3456", airport:"ILAR", role:"Approach"}
-    // Tilføj flere ATC-brugere her
-  ];
-
   let currentATC = null;
 
+  // ATC login – PIN skal være 1234
   document.getElementById("login-btn").addEventListener("click", () => {
     const name = document.getElementById("atc-name").value;
     const pin = document.getElementById("atc-pin").value;
     const airport = document.getElementById("atc-airport").value;
     const role = document.getElementById("atc-role").value;
-    const user = ATC_USERS.find(u => u.name === name && u.pin === pin && u.airport === airport && u.role === role);
-    if(user){
-      currentATC = user;
+
+    if(pin === "1234") {
+      currentATC = { name, airport, role };
       document.getElementById("atc-panel").classList.remove("hidden");
       document.getElementById("atc-display").textContent = `${currentATC.name} (${currentATC.role})`;
       loadAtcPanel();
     } else {
-      alert("Forkert navn, PIN, lufthavn eller rolle!");
+      alert("Forkert PIN!");
     }
   });
 
@@ -169,12 +162,12 @@
       const list = document.getElementById("atc-plans");
       list.innerHTML="";
       snapshot.forEach(doc=>{
-        const d=doc.data();
+        const d = doc.data();
 
         // Kun flightplans fra ATC's lufthavn
         if(d.dep !== currentATC.airport) return;
 
-        const li=document.createElement("li");
+        const li = document.createElement("li");
         li.textContent = `${d.callsign} | ${d.dep}→${d.arr} | ${d.rules} | Squawk:${d.squawk} | Status:`;
 
         // Status knapper med farve
@@ -186,19 +179,19 @@
         };
 
         Object.keys(statuses).forEach(s=>{
-          const btn=document.createElement("button");
+          const btn = document.createElement("button");
           btn.className="status-btn";
-          btn.textContent=s;
+          btn.textContent = s;
           btn.style.background = statuses[s];
-          btn.onclick=()=>db.collection("flightplans").doc(doc.id).update({status:s});
+          btn.onclick = ()=>db.collection("flightplans").doc(doc.id).update({status:s});
           li.appendChild(btn);
         });
 
         // Delete
-        const del=document.createElement("button");
+        const del = document.createElement("button");
         del.textContent="❌ Slet";
         del.style.background="#ef4444";
-        del.onclick=()=>db.collection("flightplans").doc(doc.id).delete();
+        del.onclick = ()=>db.collection("flightplans").doc(doc.id).delete();
         li.appendChild(del);
 
         list.appendChild(li);
