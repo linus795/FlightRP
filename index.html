@@ -1,23 +1,26 @@
 <!doctype html>
 <html lang="da">
 <head>
-  <meta charset="utf-8">
-  <title>PTFS ATIS - Flightplan Manager</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: Arial, sans-serif; background:#0f172a; color:white; padding:20px; }
-    h1,h2 { color:#38bdf8; }
-    form, .panel { background:#1e293b; padding:15px; border-radius:8px; margin-bottom:20px; }
-    label { display:block; margin-top:10px; }
-    input, select, button { width:100%; padding:8px; border-radius:4px; border:none; margin-top:5px; }
-    button { cursor:pointer; font-weight:bold; }
-    ul { list-style:none; padding:0; }
-    li { background:#1e293b; margin:5px 0; padding:10px; border-radius:6px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; }
-    .hidden { display:none; }
-    .status-btn { margin-left:5px; padding:4px 6px; border-radius:4px; font-size:12px; font-weight:bold; color:white; }
-  </style>
+<meta charset="utf-8">
+<title>PTFS ATIS - Flightplan Manager</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body { font-family: Arial, sans-serif; background:#0f172a; color:white; padding:20px; }
+  h1,h2 { color:#38bdf8; }
+  form, .panel { background:#1e293b; padding:15px; border-radius:8px; margin-bottom:20px; }
+  label { display:block; margin-top:10px; }
+  input, select, button { width:100%; padding:8px; border-radius:4px; border:none; margin-top:5px; }
+  button { cursor:pointer; font-weight:bold; }
+  ul { list-style:none; padding:0; }
+  li { background:#1e293b; margin:5px 0; padding:10px; border-radius:6px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; position:relative; }
+  .hidden { display:none; }
+  .status-btn { margin-left:5px; padding:4px 6px; border-radius:4px; font-size:12px; font-weight:bold; color:white; }
+  .tooltip { position:absolute; background:#1e293b; padding:5px 8px; border-radius:4px; font-size:12px; top:-25px; left:0; display:none; white-space:nowrap; }
+  li:hover .tooltip { display:block; }
+</style>
 </head>
 <body>
+
 <h1>PTFS ATIS - Flightplans</h1>
 
 <!-- Pilot flightplan form -->
@@ -113,23 +116,22 @@
 <!-- ATC Panel -->
 <div id="atc-panel" class="panel hidden">
   <h2>ATC Panel</h2>
-  <p>Velkommen, <span id="atc-display"></span>! Du kan ændre status eller slette flightplans.</p>
+  <p>Velkommen, <span id="atc-display"></span>! Farvekodede status-knapper:</p>
   <ul id="atc-plans"></ul>
 </div>
 
-<!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
 <script>
 const firebaseConfig = {
-    apiKey: "AIzaSyAqmFP49513SIEYDTPGDRlgQ2sttbCEVps",
-    authDomain: "ptfsfligtplan.firebaseapp.com",
-    projectId: "ptfsfligtplan",
-    storageBucket: "ptfsfligtplan.firebasestorage.app",
-    messagingSenderId: "109109884359",
-    appId: "1:109109884359:web:c69698533bbe25c80b55e2",
-    measurementId: "G-ZERL7Y4ERS"
+  apiKey: "AIzaSyAqmFP49513SIEYDTPGDRlgQ2sttbCEVps",
+  authDomain: "ptfsfligtplan.firebaseapp.com",
+  projectId: "ptfsfligtplan",
+  storageBucket: "ptfsfligtplan.firebasestorage.app",
+  messagingSenderId: "109109884359",
+  appId: "1:109109884359:web:c69698533bbe25c80b55e2",
+  measurementId: "G-ZERL7Y4ERS"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
@@ -158,7 +160,7 @@ document.getElementById("fp-form").addEventListener("submit", async (e)=>{
   e.target.reset();
 });
 
-// Live view for pilots
+// Live pilot view
 db.collection("flightplans").orderBy("time","desc").onSnapshot(snapshot=>{
   const list = document.getElementById("plans");
   list.innerHTML="";
@@ -186,7 +188,7 @@ document.getElementById("login-btn").addEventListener("click", ()=>{
   } else alert("Forkert PIN!");
 });
 
-// ATC panel – kun flightplans der matcher ATC's airport (dep eller arr)
+// ATC panel – farver + tooltip
 function loadAtcPanel(){
   db.collection("flightplans").orderBy("time","desc").onSnapshot(snapshot=>{
     const list = document.getElementById("atc-plans");
@@ -196,8 +198,14 @@ function loadAtcPanel(){
       if(d.dep !== currentATC.airport && d.arr !== currentATC.airport) return;
 
       const li = document.createElement("li");
-      let fromTo = d.dep === currentATC.airport ? `Departure from here → ${d.arr}` : `Arrival from ${d.dep} → here`;
+      const fromTo = d.dep === currentATC.airport ? `Departure from here → ${d.arr}` : `Arrival from ${d.dep} → here`;
       li.textContent = `${d.callsign} | ${d.type} | ${fromTo} | FL:${d.alt} | ETA:${d.eta} | ${d.rules} | Squawk:${d.squawk} | Status:`;
+
+      // Tooltip
+      const tooltip = document.createElement("div");
+      tooltip.className = "tooltip";
+      tooltip.textContent = `Departure: ${d.dep} | Arrival: ${d.arr} | ETA: ${d.eta}`;
+      li.appendChild(tooltip);
 
       const statuses = {"Filed":"#38bdf8","Cleared":"#facc15","Taxi":"#f97316","Airborne":"#22c55e"};
       Object.keys(statuses).forEach(s=>{
