@@ -147,7 +147,7 @@
     const role = document.getElementById("atc-role").value;
 
     if(pin === "1234") {
-      currentATC = { name, airport, role };
+      currentATC = { name, airport, role }; // Opret bruger med input-værdier
       document.getElementById("atc-panel").classList.remove("hidden");
       document.getElementById("atc-display").textContent = `${currentATC.name} (${currentATC.role})`;
       loadAtcPanel();
