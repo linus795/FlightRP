@@ -9,11 +9,11 @@
     form, .panel { background:#1e293b; padding:15px; border-radius:8px; margin-bottom:20px; }
     label { display:block; margin-top:10px; }
     input, select, button { width:100%; padding:8px; border-radius:4px; border:none; margin-top:5px; }
-    button { cursor:pointer; font-weight:bold; background:#38bdf8; color:black; }
+    button { cursor:pointer; font-weight:bold; }
     ul { list-style:none; padding:0; }
-    li { background:#1e293b; margin:5px 0; padding:10px; border-radius:6px; display:flex; justify-content:space-between; align-items:center; }
+    li { background:#1e293b; margin:5px 0; padding:10px; border-radius:6px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; }
     .hidden { display:none; }
-    .status-btn { margin-left:5px; padding:4px 6px; border-radius:4px; font-size:12px; }
+    .status-btn { margin-left:5px; padding:4px 6px; border-radius:4px; font-size:12px; font-weight:bold; color:white; }
   </style>
 </head>
 <body>
@@ -42,14 +42,31 @@
 <!-- ATC Login -->
 <div class="panel">
   <h2>ATC Login</h2>
-  <input type="password" id="atc-pin" placeholder="Enter ATC PIN">
+  <label>Navn <input type="text" id="atc-name" placeholder="ATC navn"></label>
+  <label>PIN <input type="password" id="atc-pin" placeholder="Enter ATC PIN"></label>
+  <label>Lufthavn
+    <select id="atc-airport">
+      <option value="IRFD">Greater Rockford</option>
+      <option value="IPPH">Perth International</option>
+      <option value="ILAR">Larnaca</option>
+      <option value="ITKO">Tokyo International</option>
+      <!-- Tilføj flere lufthavne her -->
+    </select>
+  </label>
+  <label>Rolle
+    <select id="atc-role">
+      <option value="Ground">Ground</option>
+      <option value="Tower">Tower</option>
+      <option value="Approach">Approach</option>
+    </select>
+  </label>
   <button id="login-btn">Login</button>
 </div>
 
 <!-- ATC Panel -->
 <div id="atc-panel" class="panel hidden">
   <h2>ATC Panel</h2>
-  <p>Velkommen, ATC! Du kan ændre status eller slette flightplans.</p>
+  <p>Velkommen, <span id="atc-display"></span>! Du kan ændre status eller slette flightplans.</p>
   <ul id="atc-plans"></ul>
 </div>
 
@@ -58,18 +75,17 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
 <script>
-  // Firebase config – erstat med din egen fra Firebase Console
+  // Firebase config – erstat med din egen
   const firebaseConfig = {
-  apiKey: "AIzaSyAqmFP49513SIEYDTPGDRlgQ2sttbCEVps",
-  authDomain: "ptfsfligtplan.firebaseapp.com",
-  projectId: "ptfsfligtplan",
-  storageBucket: "ptfsfligtplan.firebasestorage.app",
-  messagingSenderId: "109109884359",
-  appId: "1:109109884359:web:c69698533bbe25c80b55e2",
-  measurementId: "G-ZERL7Y4ERS"
+    apiKey: "AIzaSyAqmFP49513SIEYDTPGDRlgQ2sttbCEVps",
+    authDomain: "ptfsfligtplan.firebaseapp.com",
+    projectId: "ptfsfligtplan",
+    storageBucket: "ptfsfligtplan.firebasestorage.app",
+    messagingSenderId: "109109884359",
+    appId: "1:109109884359:web:c69698533bbe25c80b55e2",
+    measurementId: "G-ZERL7Y4ERS"
   };
 
-  // Init Firebase
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
 
@@ -84,8 +100,8 @@
     const plan = {
       callsign: document.getElementById("callsign").value,
       type: document.getElementById("type").value,
-      dep: document.getElementById("dep").value,
-      arr: document.getElementById("arr").value,
+      dep: document.getElementById("dep").value.toUpperCase(),
+      arr: document.getElementById("arr").value.toUpperCase(),
       alt: document.getElementById("alt").value,
       eta: document.getElementById("eta").value,
       rules: document.getElementById("rules").value,
@@ -110,14 +126,30 @@
     });
   });
 
-  // ATC Login
-  const ATC_PIN = "1234"; // skift kode
+  // ATC login data – navn:PIN:lufthavn:rolle
+  const ATC_USERS = [
+    {name:"Copenhagen_ATC", pin:"1234", airport:"IRFD", role:"Ground"},
+    {name:"Aarhus_ATC", pin:"2345", airport:"IPPH", role:"Tower"},
+    {name:"Billund_ATC", pin:"3456", airport:"ILAR", role:"Approach"}
+    // Tilføj flere ATC-brugere her
+  ];
+
+  let currentATC = null;
+
   document.getElementById("login-btn").addEventListener("click", () => {
+    const name = document.getElementById("atc-name").value;
     const pin = document.getElementById("atc-pin").value;
-    if(pin===ATC_PIN){
+    const airport = document.getElementById("atc-airport").value;
+    const role = document.getElementById("atc-role").value;
+    const user = ATC_USERS.find(u => u.name === name && u.pin === pin && u.airport === airport && u.role === role);
+    if(user){
+      currentATC = user;
       document.getElementById("atc-panel").classList.remove("hidden");
+      document.getElementById("atc-display").textContent = `${currentATC.name} (${currentATC.role})`;
       loadAtcPanel();
-    } else alert("Forkert PIN!");
+    } else {
+      alert("Forkert navn, PIN, lufthavn eller rolle!");
+    }
   });
 
   // ATC panel
@@ -127,14 +159,26 @@
       list.innerHTML="";
       snapshot.forEach(doc=>{
         const d=doc.data();
-        const li=document.createElement("li");
-        li.textContent = `${d.callsign} | ${d.dep}→${d.arr} | ${d.rules} | Squawk:${d.squawk} | Status:${d.status}`;
 
-        // Status knapper
-        ["Filed","Cleared","Taxi","Airborne"].forEach(s=>{
+        // Kun flightplans fra ATC's lufthavn
+        if(d.dep !== currentATC.airport) return;
+
+        const li=document.createElement("li");
+        li.textContent = `${d.callsign} | ${d.dep}→${d.arr} | ${d.rules} | Squawk:${d.squawk} | Status:`;
+
+        // Status knapper med farve
+        const statuses = {
+          "Filed":"#38bdf8",
+          "Cleared":"#facc15",
+          "Taxi":"#f97316",
+          "Airborne":"#22c55e"
+        };
+
+        Object.keys(statuses).forEach(s=>{
           const btn=document.createElement("button");
           btn.className="status-btn";
           btn.textContent=s;
+          btn.style.background = statuses[s];
           btn.onclick=()=>db.collection("flightplans").doc(doc.id).update({status:s});
           li.appendChild(btn);
         });
@@ -142,6 +186,7 @@
         // Delete
         const del=document.createElement("button");
         del.textContent="❌ Slet";
+        del.style.background="#ef4444";
         del.onclick=()=>db.collection("flightplans").doc(doc.id).delete();
         li.appendChild(del);
 
