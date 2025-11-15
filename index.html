@@ -2,227 +2,449 @@
 <html lang="da">
 <head>
 <meta charset="utf-8">
-<title>PTFS ATIS - Flightplan Manager (Fixed)</title>
+<title>PTFS ATIS - All-in-One Flightplan Manager</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  body { font-family: Arial, sans-serif; background:#0f172a; color:white; padding:20px; }
-  h1,h2 { color:#38bdf8; }
-  form, .panel { background:#1e293b; padding:15px; border-radius:8px; margin-bottom:20px; }
-  label { display:block; margin-top:10px; }
-  input, select, button { width:100%; padding:8px; border-radius:4px; border:none; margin-top:5px; }
-  button { cursor:pointer; font-weight:bold; }
-  ul { list-style:none; padding:0; }
-  li { background:#1e293b; margin:5px 0; padding:10px; border-radius:6px; display:flex; flex-direction:column; position:relative; }
-  .hidden { display:none; }
-  .status-btn { margin-right:5px; padding:4px 6px; border-radius:4px; font-size:12px; font-weight:bold; color:white; }
-  .status-row { margin-top:8px; }
-  .tooltip { position:absolute; background:#1e293b; padding:5px 8px; border-radius:4px; font-size:12px; top:-25px; left:0; display:none; white-space:nowrap; }
-  li:hover .tooltip { display:block; }
+  :root{--bg:#0b1220;--card:#0f1724;--accent:#06b6d4;--muted:#94a3b8;--ok:#16a34a;--warn:#f97316;--danger:#ef4444}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter, Arial, sans-serif;background:linear-gradient(180deg,var(--bg),#07101a);color:#e6eef6;padding:18px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  h1{margin:0;color:var(--accent);font-size:20px}
+  .container{display:grid;grid-template-columns:360px 1fr;gap:18px;margin-top:16px}
+  .panel{background:var(--card);padding:14px;border-radius:10px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+  label{display:block;font-size:13px;color:var(--muted);margin-top:8px}
+  input,select,textarea,button{width:100%;padding:8px;border-radius:8px;border:none;background:#071428;color:inherit}
+  button{cursor:pointer}
+  .muted{color:var(--muted);font-size:13px}
+  .plans-list{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+  .plan{display:flex;flex-direction:column;padding:10px;border-radius:8px;background:linear-gradient(180deg,#0b1624,#081220);}
+  .plan-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .tags{display:flex;gap:6px;flex-wrap:wrap}
+  .tag{font-size:12px;padding:4px 8px;border-radius:999px}
+  .tag.sq{background:#0b3b66;color:#bde7ff}
+  .tag.alt{background:#082e20;color:#c8f7df}
+  .actions{display:flex;gap:6px}
+  .status-btn{padding:6px 8px;border-radius:6px;font-weight:600}
+  .controls{display:flex;gap:8px;align-items:center}
+  .toolbar{display:flex;gap:10px;align-items:center}
+  .flex{display:flex;gap:10px}
+  .right{justify-content:flex-end}
+  .small{font-size:12px}
+  .footer{margin-top:12px;color:var(--muted);font-size:13px}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  @media(max-width:900px){.container{grid-template-columns:1fr}header{flex-direction:column;align-items:flex-start}}
+  /* modal */
+  .modal{position:fixed;inset:0;background:rgba(2,6,23,0.6);display:none;align-items:center;justify-content:center;padding:20px}
+  .modal.open{display:flex}
+  .modal-card{width:880px;max-width:100%;background:var(--card);padding:16px;border-radius:10px}
+  .row{display:flex;gap:8px;align-items:center}
+  .icon{width:36px;height:36px;border-radius:8px;background:#022235;display:flex;align-items:center;justify-content:center}
+  .import-area{height:120px}
 </style>
 </head>
 <body>
+<header>
+  <div>
+    <h1>PTFS ATIS — All-in-One</h1>
+    <div class="muted">Opret, rediger, filtrer, eksportér og administrér alle flightplans lokalt (LocalStorage)</div>
+  </div>
+  <div class="controls">
+    <div class="toolbar">
+      <select id="filter-airport"><option value="">Alle lufthavne</option></select>
+      <select id="filter-status"><option value="">Alle statusser</option><option>Filed</option><option>Cleared</option><option>Taxi</option><option>Airborne</option></select>
+      <input id="q" placeholder="Søg callsign, dep, arr..." style="width:240px">
+      <button id="btn-export">Eksportér JSON</button>
+      <button id="btn-import">Importér JSON</button>
+    </div>
+    <div class="right">
+      <button id="btn-clear">Slet alle (DB)</button>
+    </div>
+  </div>
+</header>
 
-<h1>PTFS ATIS - Flightplans</h1>
+<div class="container">
+  <aside class="panel">
+    <h2 style="margin:0 0 8px 0">Opret / Rediger flightplan</h2>
+    <form id="fp-form">
+      <label>Callsign <input id="callsign" required></label>
+      <label>Aircraft type <input id="type" required></label>
+      <div class="grid-2">
+        <div>
+          <label>Departure
+            <select id="dep" required></select>
+          </label>
+        </div>
+        <div>
+          <label>Arrival
+            <select id="arr" required></select>
+          </label>
+        </div>
+      </div>
+      <div class="grid-2">
+        <label>Cruise altitude <input id="alt" required placeholder="e.g. 350" type="number"></label>
+        <label>ETA <input id="eta" required placeholder="HH:MM"></label>
+      </div>
+      <label>Flight rules
+        <select id="rules"><option>IFR</option><option>VFR</option></select>
+      </label>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button id="submit-btn" type="submit">Gem flightplan</button>
+        <button id="reset-btn" type="button">Nulstil</button>
+        <button id="assign-squawk" type="button">Tildel unik squawk</button>
+      </div>
+      <input type="hidden" id="fp-id">
+    </form>
 
-<form id="fp-form">
-  <label>Callsign <input id="callsign" required></label>
-  <label>Aircraft type <input id="type" required></label>
-  <label>Departure
-    <select id="dep" required>
-      <option value="IRFD">Greater Rockford Airport</option>
-      <option value="ILKL">Lukla International Airport</option>
-      <option value="IPPH">Perth International Airport</option>
-      <option value="ITKO">Tokyo International Airport</option>
-      <option value="ILAR">Larnaca International Airport</option>
-      <option value="IPAP">Paphos International Airport</option>
-      <option value="IGRV">Grindavik Airport</option>
-      <option value="IDCS">Saba International Airport</option>
-      <option value="IGAR">Airbase Garry</option>
-      <option value="IBLT">Boltic Airfield</option>
-      <option value="IHEN">Henstridge Airfield</option>
-      <option value="ISCM">RAF Scampton</option>
-      <option value="IJAF">Al Najaf Airfield</option>
-      <option value="IZOL">Izolirani Airport</option>
-      <option value="ITRC">Training Centre</option>
-    </select>
-  </label>
-  <label>Arrival
-    <select id="arr" required>
-      <option value="IRFD">Greater Rockford Airport</option>
-      <option value="ILKL">Lukla International Airport</option>
-      <option value="IPPH">Perth International Airport</option>
-      <option value="ITKO">Tokyo International Airport</option>
-      <option value="ILAR">Larnaca International Airport</option>
-      <option value="IPAP">Paphos International Airport</option>
-      <option value="IGRV">Grindavik Airport</option>
-      <option value="IDCS">Saba International Airport</option>
-      <option value="IGAR">Airbase Garry</option>
-      <option value="IBLT">Boltic Airfield</option>
-      <option value="IHEN">Henstridge Airfield</option>
-      <option value="ISCM">RAF Scampton</option>
-      <option value="IJAF">Al Najaf Airfield</option>
-      <option value="IZOL">Izolirani Airport</option>
-      <option value="ITRC">Training Centre</option>
-    </select>
-  </label>
-  <label>Cruise altitude <input id="alt" required></label>
-  <label>ETA <input id="eta" required placeholder="00:45"></label>
-  <label>Flight rules
-    <select id="rules">
-      <option value="IFR">IFR</option>
-      <option value="VFR">VFR</option>
-    </select>
-  </label>
-  <button type="submit">Submit Flightplan</button>
-</form>
+    <hr style="border:none;border-top:1px solid #0b2a3c;margin:12px 0">
+    <h3 style="margin:0">ATC Login</h3>
+    <label>Navn <input id="atc-name"></label>
+    <label>PIN <input id="atc-pin" type="password" placeholder="1234"></label>
+    <label>Lufthavn <select id="atc-airport"></select></label>
+    <label>Rolle <select id="atc-role"><option>Ground</option><option>Tower</option><option>Approach</option></select></label>
+    <div style="display:flex;gap:8px;margin-top:8px"><button id="atc-login">Login</button><button id="atc-logout" style="display:none">Logout</button></div>
 
-<h2>Active Flightplans</h2>
-<ul id="plans"></ul>
+    <div class="footer">Tip: brug eksport/import for backup. Appen kører lokalt via LocalStorage.</div>
+  </aside>
 
-<div class="panel">
-  <h2>ATC Login</h2>
-  <label>Navn <input type="text" id="atc-name"></label>
-  <label>PIN <input type="password" id="atc-pin"></label>
-  <label>Lufthavn
-    <select id="atc-airport">
-      <option value="IRFD">Greater Rockford Airport</option>
-      <option value="ILKL">Lukla International Airport</option>
-      <option value="IPPH">Perth International Airport</option>
-      <option value="ITKO">Tokyo International Airport</option>
-      <option value="ILAR">Larnaca International Airport</option>
-      <option value="IPAP">Paphos International Airport</option>
-      <option value="IGRV">Grindavik Airport</option>
-      <option value="IDCS">Saba International Airport</option>
-      <option value="IGAR">Airbase Garry</option>
-      <option value="IBLT">Boltic Airfield</option>
-      <option value="IHEN">Henstridge Airfield</option>
-      <option value="ISCM">RAF Scampton</option>
-      <option value="IJAF">Al Najaf Airfield</option>
-      <option value="IZOL">Izolirani Airport</option>
-      <option value="ITRC">Training Centre</option>
-    </select>
-  </label>
-  <label>Rolle
-    <select id="atc-role">
-      <option value="Ground">Ground</option>
-      <option value="Tower">Tower</option>
-      <option value="Approach">Approach</option>
-    </select>
-  </label>
-  <button id="login-btn">Login</button>
+  <main>
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2 style="margin:0">Aktive flightplans</h2>
+        <div class="muted small">Sortér: <select id="sort"><option value="time_desc">Nyeste</option><option value="time_asc">Ældste</option><option value="eta_asc">ETA stigende</option><option value="eta_desc">ETA faldende</option></select></div>
+      </div>
+
+      <ul id="plans" class="plans-list" style="margin-top:12px"></ul>
+    </div>
+
+    <div class="panel" style="margin-top:12px">
+      <h3>Handlinger og eksport</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="export-csv">Eksportér CSV</button>
+        <button id="bulk-delete">Slet valgte</button>
+        <button id="select-all">Vælg alle</button>
+        <button id="deselect-all">Fravælg</button>
+      </div>
+    </div>
+  </main>
 </div>
 
-<div id="atc-panel" class="panel hidden">
-  <h2>ATC Panel</h2>
-  <p>Velkommen, <span id="atc-display"></span>!</p>
-  <ul id="atc-plans"></ul>
+<!-- Modal: Import -->
+<div id="modal" class="modal">
+  <div class="modal-card">
+    <h3>Importer flightplans (JSON)</h3>
+    <textarea id="import-json" class="import-area" placeholder='Indsæt JSON array af flightplans'></textarea>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button id="do-import">Importer</button>
+      <button id="close-modal">Luk</button>
+    </div>
+  </div>
 </div>
-
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
 <script>
-const firebaseConfig = {
-  apiKey: "AIzaSyAqmFP49513SIEYDTPGDRlgQ2sttbCEVps",
-  authDomain: "ptfsfligtplan.firebaseapp.com",
-  projectId: "ptfsfligtplan",
-  storageBucket: "ptfsfligtplan.firebasestorage.app",
-  messagingSenderId: "109109884359",
-  appId: "1:109109884359:web:c69698533bbe25c80b55e2",
-  measurementId: "G-ZERL7Y4ERS"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+/* All-in-one client-side Flightplan Manager
+   - Persistence: localStorage
+   - Features: create, edit, delete, unique squawk generator, status updates, filters, search, export/import, CSV, ATC login (local), bulk select
+*/
 
-function generateSquawk() { return Math.floor(1000 + Math.random()*9000); }
+const DEFAULT_AIRPORTS = [
+  {code:'IRFD',name:'Greater Rockford Airport'},
+  {code:'ILKL',name:'Lukla International Airport'},
+  {code:'IPPH',name:'Perth International Airport'},
+  {code:'ITKO',name:'Tokyo International Airport'},
+  {code:'ILAR',name:'Larnaca International Airport'},
+  {code:'IPAP',name:'Paphos International Airport'},
+  {code:'IGRV',name:'Grindavik Airport'},
+  {code:'IDCS',name:'Saba International Airport'},
+  {code:'IGAR',name:'Airbase Garry'},
+  {code:'IBLT',name:'Boltic Airfield'},
+  {code:'IHEN',name:'Henstridge Airfield'},
+  {code:'ISCM',name:'RAF Scampton'},
+  {code:'IJAF',name:'Al Najaf Airfield'},
+  {code:'IZOL',name:'Izolirani Airport'},
+  {code:'ITRC',name:'Training Centre'}
+];
 
-document.getElementById("fp-form").addEventListener("submit", async (e)=>{
-  e.preventDefault();
-  const plan = {
-    callsign: callsign.value.trim(),
-    type: type.value.trim(),
-    dep: dep.value,
-    arr: arr.value,
-    alt: alt.value.trim(),
-    eta: eta.value.trim(),
-    rules: rules.value,
-    squawk: generateSquawk(),
-    status: "Filed",
-    time: Date.now()
-  };
-  await db.collection("flightplans").add(plan);
-  alert("Flightplan submitted! Squawk: " + plan.squawk);
-  e.target.reset();
-});
+// DOM
+const dep = document.getElementById('dep');
+const arr = document.getElementById('arr');
+const atcAirport = document.getElementById('atc-airport');
+const filterAirport = document.getElementById('filter-airport');
+const plansEl = document.getElementById('plans');
+const fpForm = document.getElementById('fp-form');
+const fpId = document.getElementById('fp-id');
+const q = document.getElementById('q');
+const filterStatus = document.getElementById('filter-status');
+const sortSelect = document.getElementById('sort');
+const modal = document.getElementById('modal');
+const importJson = document.getElementById('import-json');
 
-db.collection("flightplans").orderBy("time","desc").onSnapshot(snap=>{
-  const list = plans;
-  list.innerHTML="";
-  snap.forEach(doc=>{
-    const d = doc.data();
-    const li = document.createElement("li");
-    li.innerHTML = `${d.callsign} | ${d.type} | ${d.dep}→${d.arr} | FL:${d.alt} | ETA:${d.eta} | ${d.rules} | Squawk:${d.squawk} | Status:${d.status}`;
-    list.appendChild(li);
-  });
-});
+// buttons
+const btnExport = document.getElementById('btn-export');
+const btnImport = document.getElementById('btn-import');
+const btnClear = document.getElementById('btn-clear');
+const btnAssignSquawk = document.getElementById('assign-squawk');
+const submitBtn = document.getElementById('submit-btn');
+const resetBtn = document.getElementById('reset-btn');
+const atcLogin = document.getElementById('atc-login');
+const atcLogout = document.getElementById('atc-logout');
+const btnExportCsv = document.getElementById('export-csv');
+const btnBulkDelete = document.getElementById('bulk-delete');
+const btnSelectAll = document.getElementById('select-all');
+const btnDeselectAll = document.getElementById('deselect-all');
+const btnDoImport = document.getElementById('do-import');
+const btnCloseModal = document.getElementById('close-modal');
 
-let currentATC = null;
+// form fields
+const callsign = document.getElementById('callsign');
+const typeField = document.getElementById('type');
+const alt = document.getElementById('alt');
+const eta = document.getElementById('eta');
+const rules = document.getElementById('rules');
 
-document.getElementById("login-btn").addEventListener("click",()=>{
-  const pin = document.getElementById("atc-pin").value;
-  if(pin !== "1234") return alert("Forkert PIN!");
-  currentATC = {
-    name: document.getElementById("atc-name").value,
-    airport: document.getElementById("atc-airport").value,
-    role: document.getElementById("atc-role").value
-  };
-  atc-panel.classList.remove("hidden");
-  atc-display.textContent = `${currentATC.name} (${currentATC.role})`;
-  loadAtcPanel();
-});
+// storage keys
+const KEY = 'ptfs_flightplans_v1';
+const KEY_ATC = 'ptfs_atc_v1';
 
-function loadAtcPanel(){
-  db.collection("flightplans").orderBy("time","desc").onSnapshot(snap=>{
-    const list = atc-plans;
-    list.innerHTML="";
-    snap.forEach(doc=>{
-      const d = doc.data();
-      if(d.dep !== currentATC.airport && d.arr !== currentATC.airport) return;
+let flightplans = load();
+let atc = loadAtc();
+let selectedIds = new Set();
 
-      const li = document.createElement("li");
-      const tooltip = document.createElement("div");
-      tooltip.className = "tooltip";
-      tooltip.textContent = `ETA: ${d.eta}`;
+// init
+function init(){
+  populateAirports();
+  populateFilters();
+  render();
+}
 
-      li.innerHTML = `${d.callsign} | ${d.dep}→${d.arr} | FL:${d.alt} | Squawk:${d.squawk}`;
-      li.appendChild(tooltip);
-
-      const statusRow = document.createElement("div");
-      statusRow.className = "status-row";
-
-      const statuses = { Filed:"#38bdf8", Cleared:"#facc15", Taxi:"#f97316", Airborne:"#22c55e" };
-
-      for(const s in statuses){
-        const btn = document.createElement("button");
-        btn.textContent = s;
-        btn.className = "status-btn";
-        btn.style.background = statuses[s];
-        btn.onclick = ()=> db.collection("flightplans").doc(doc.id).update({status:s});
-        statusRow.appendChild(btn);
-      }
-
-      const del = document.createElement("button");
-      del.textContent="Delete";
-      del.style.background="#ef4444";
-      del.onclick=()=> db.collection("flightplans").doc(doc.id).delete();
-
-      statusRow.appendChild(del);
-      li.appendChild(statusRow);
-      list.appendChild(li);
-    });
+function populateAirports(){
+  DEFAULT_AIRPORTS.forEach(a=>{
+    const opt = option(a.code, `${a.code} — ${a.name}`);
+    dep.appendChild(opt.cloneNode(true));
+    arr.appendChild(opt.cloneNode(true));
+    atcAirport.appendChild(opt.cloneNode(true));
+    filterAirport.appendChild(opt.cloneNode(true));
   });
 }
-</script>
+function populateFilters(){
+  // add empty default already present
+}
 
+function option(value,text){const o=document.createElement('option');o.value=value;o.textContent=text;return o}
+
+function save(){localStorage.setItem(KEY, JSON.stringify(flightplans));}
+function load(){try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){return []}}
+function saveAtc(){localStorage.setItem(KEY_ATC, JSON.stringify(atc));}
+function loadAtc(){try{return JSON.parse(localStorage.getItem(KEY_ATC)||'null')}catch(e){return null}}
+
+function uid(){return 'fp_' + Math.random().toString(36).slice(2,9)}
+
+function uniqueSquawk(){
+  const used = new Set(flightplans.map(f=>String(f.squawk)));
+  let s;
+  do{s = Math.floor(1000 + Math.random()*9000).toString()}while(used.has(s));
+  return s;
+}
+
+// CRUD
+fpForm.addEventListener('submit', (e)=>{
+  e.preventDefault();
+  const id = fpId.value || uid();
+  const payload = {
+    id,
+    callsign: callsign.value.trim() || 'UNKNOWN',
+    type: typeField.value.trim() || 'UNKNOWN',
+    dep: dep.value,
+    arr: arr.value,
+    alt: alt.value || '',
+    eta: eta.value || '',
+    rules: rules.value,
+    squawk: fpId.value ? (flightplans.find(f=>f.id===fpId.value)?.squawk || uniqueSquawk()) : uniqueSquawk(),
+    status: 'Filed',
+    time: Date.now()
+  };
+
+  const existing = flightplans.findIndex(f=>f.id===id);
+  if(existing >= 0) flightplans[existing] = {...flightplans[existing], ...payload};
+  else flightplans.unshift(payload);
+  save();
+  resetForm();
+  render();
+  alert('Flightplan gemt ✅ Squawk: ' + payload.squawk);
+});
+
+resetBtn.addEventListener('click', resetForm);
+function resetForm(){fpId.value='';fpForm.reset();}
+
+btnAssignSquawk.addEventListener('click', ()=>{
+  const s = uniqueSquawk();
+  alert('Tildelt squawk: ' + s);
+});
+
+// render
+function render(){
+  // filters
+  const qv = q.value.trim().toLowerCase();
+  const fa = filterAirport.value;
+  const fs = filterStatus.value;
+  const sort = sortSelect.value;
+
+  let list = flightplans.slice();
+  if(qv) list = list.filter(f=>[f.callsign,f.dep,f.arr,f.type,f.squawk,(f.alt||'')].some(x=>String(x).toLowerCase().includes(qv)));
+  if(fa) list = list.filter(f=>f.dep===fa || f.arr===fa);
+  if(fs) list = list.filter(f=>f.status===fs);
+
+  // sort
+  if(sort==='time_desc') list.sort((a,b)=>b.time-a.time);
+  if(sort==='time_asc') list.sort((a,b)=>a.time-b.time);
+  if(sort==='eta_asc') list.sort((a,b)=>parseEta(a.eta)-parseEta(b.eta));
+  if(sort==='eta_desc') list.sort((a,b)=>parseEta(b.eta)-parseEta(a.eta));
+
+  // populate
+  plansEl.innerHTML='';
+  list.forEach(f=>plansEl.appendChild(renderPlan(f)));
+}
+
+function parseEta(t){
+  if(!t) return Infinity;
+  const m = t.match(/^(\d{1,2}):(\d{2})$/);
+  if(!m) return Infinity;
+  return parseInt(m[1])*60 + parseInt(m[2]);
+}
+
+function renderPlan(f){
+  const li = document.createElement('li');
+  li.className='plan';
+  const row = document.createElement('div'); row.className='plan-row';
+  const left = document.createElement('div');
+  left.innerHTML = `<strong>${escapeHtml(f.callsign)}</strong> <span class="muted">${escapeHtml(f.type)}</span><div class="muted small">${f.dep} → ${f.arr} • ETA ${f.eta || '-'} • ${f.rules}</div>`;
+  const right = document.createElement('div');
+  right.className='tags';
+  const t1 = document.createElement('span'); t1.className='tag sq'; t1.textContent = 'Squawk: ' + f.squawk;
+  const t2 = document.createElement('span'); t2.className='tag alt'; t2.textContent = 'FL' + (f.alt||'-');
+  right.appendChild(t1); right.appendChild(t2);
+
+  row.appendChild(left); row.appendChild(right);
+  li.appendChild(row);
+
+  // actions
+  const actionRow = document.createElement('div'); actionRow.style.marginTop='8px'; actionRow.className='row';
+  const actions = document.createElement('div'); actions.className='actions';
+  ['Filed','Cleared','Taxi','Airborne'].forEach(s=>{
+    const b = document.createElement('button'); b.textContent = s; b.className='status-btn';
+    if(s==='Filed') b.style.background='#0b3b66';
+    if(s==='Cleared') b.style.background='#facc15';
+    if(s==='Taxi') b.style.background='#f97316';
+    if(s==='Airborne') b.style.background='#16a34a';
+    b.addEventListener('click', ()=>{updateStatus(f.id,s)});
+    actions.appendChild(b);
+  });
+
+  const edit = document.createElement('button'); edit.textContent='✏️'; edit.title='Rediger'; edit.addEventListener('click', ()=>loadForEdit(f.id));
+  const del = document.createElement('button'); del.textContent='🗑️'; del.title='Slet'; del.addEventListener('click', ()=>{if(confirm('Slet flightplan?')){deletePlan(f.id)}});
+
+  actions.appendChild(edit); actions.appendChild(del);
+
+  // checkbox for bulk
+  const cb = document.createElement('input'); cb.type='checkbox'; cb.style.marginRight='8px'; cb.checked = selectedIds.has(f.id);
+  cb.addEventListener('change', ()=>{if(cb.checked) selectedIds.add(f.id); else selectedIds.delete(f.id)});
+
+  actionRow.appendChild(cb); actionRow.appendChild(actions);
+  li.appendChild(actionRow);
+
+  // details
+  const details = document.createElement('div'); details.className='muted small'; details.style.marginTop='6px';
+  details.textContent = `Status: ${f.status} • Oprettet: ${new Date(f.time).toLocaleString()}`;
+  li.appendChild(details);
+
+  return li;
+}
+
+function escapeHtml(s){return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;" })[c])}
+
+function updateStatus(id,status){
+  const i = flightplans.findIndex(f=>f.id===id); if(i<0) return; flightplans[i].status = status; save(); render();}
+function deletePlan(id){flightplans = flightplans.filter(f=>f.id!==id); save(); render();}
+function loadForEdit(id){const f = flightplans.find(x=>x.id===id); if(!f) return; fpId.value=f.id; callsign.value=f.callsign; typeField.value=f.type; dep.value=f.dep; arr.value=f.arr; alt.value=f.alt; eta.value=f.eta; rules.value=f.rules; window.scrollTo({top:0,behavior:'smooth'});}
+
+// search, filters
+q.addEventListener('input', debounce(render,250));
+filterAirport.addEventListener('change', render);
+filterStatus.addEventListener('change', render);
+sortSelect.addEventListener('change', render);
+
+// export/import
+btnExport.addEventListener('click', ()=>{
+  const dataStr = JSON.stringify(flightplans, null, 2);
+  download('flightplans.json', dataStr);
+});
+
+btnImport.addEventListener('click', ()=>{modal.classList.add('open'); importJson.value='';});
+btnCloseModal.addEventListener('click', ()=>modal.classList.remove('open'));
+btnDoImport.addEventListener('click', ()=>{
+  try{
+    const parsed = JSON.parse(importJson.value);
+    if(!Array.isArray(parsed)) throw new Error('JSON skal være et array');
+    // accept and merge, but ensure ids
+    parsed.forEach(p=>{
+      if(!p.id) p.id = uid();
+      if(!p.squawk) p.squawk = uniqueSquawk();
+      p.time = p.time || Date.now();
+      flightplans.unshift(p);
+    });
+    save(); render(); modal.classList.remove('open'); alert('Import færdig');
+  }catch(e){alert('Import fejl: ' + e.message)}
+});
+
+// CSV export
+btnExportCsv.addEventListener('click', ()=>{
+  const header = ['id','callsign','type','dep','arr','alt','eta','rules','squawk','status','time'];
+  const rows = flightplans.map(f=>header.map(h=>escapeCsv(String(f[h]||''))).join(','));
+  const csv = header.join(',') + '\n' + rows.join('\n');
+  download('flightplans.csv', csv);
+});
+
+function escapeCsv(s){if(s.includes(',')||s.includes('"')||s.includes('\n')) return '"'+s.replace(/"/g,'""')+'"'; return s}
+
+// download util
+function download(filename, text){const a=document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type:'text/plain'})); a.download = filename; document.body.appendChild(a); a.click(); a.remove();}
+
+// select/deselect/bulk delete
+btnSelectAll.addEventListener('click', ()=>{flightplans.forEach(f=>selectedIds.add(f.id)); render();});
+btnDeselectAll.addEventListener('click', ()=>{selectedIds.clear(); render();});
+btnBulkDelete.addEventListener('click', ()=>{
+  if(selectedIds.size===0) return alert('Ingen valgte');
+  if(!confirm('Slet valgte?')) return; flightplans = flightplans.filter(f=>!selectedIds.has(f.id)); selectedIds.clear(); save(); render();
+});
+
+// clear DB
+btnClear.addEventListener('click', ()=>{if(confirm('Slet alle flightplans permanent?')){flightplans=[]; save(); render();}});
+
+// atc login (local)
+atcLogin.addEventListener('click', ()=>{
+  const name = document.getElementById('atc-name').value.trim();
+  const pin = document.getElementById('atc-pin').value.trim();
+  const ap = atcAirport.value; const role = document.getElementById('atc-role').value;
+  if(pin !== '1234'){return alert('Forkert PIN');}
+  atc = {name, airport:ap, role, loggedAt:Date.now()}; saveAtc(); updateAtcUI(); render();
+});
+atcLogout.addEventListener('click', ()=>{atc=null; saveAtc(); updateAtcUI(); render();});
+
+function updateAtcUI(){if(atc){atcLogin.style.display='none'; atcLogout.style.display='inline-block'; document.getElementById('atc-name').value = atc.name; document.getElementById('atc-pin').value=''; alert('ATC logged ind: ' + atc.name + ' @ ' + atc.airport);} else {atcLogin.style.display='inline-block'; atcLogout.style.display='none';}}
+
+// debounce
+function debounce(fn,ms){let t; return (...a)=>{clearTimeout(t); t=setTimeout(()=>fn(...a),ms)}}
+
+// helpers
+function seedIfEmpty(){ if(flightplans.length===0){ // optional sample data
+    const sample = [
+      {id:uid(),callsign:'PTF001',type:'B738',dep:'IRFD',arr:'ITKO',alt:'350',eta:'14:30',rules:'IFR',squawk:uniqueSquawk(),status:'Filed',time:Date.now()-1000*60*60},
+      {id:uid(),callsign:'SKY12',type:'C172',dep:'IPPH',arr:'IRFD',alt:'050',eta:'15:20',rules:'VFR',squawk:uniqueSquawk(),status:'Cleared',time:Date.now()-1000*60*30}
+    ]; flightplans = sample.concat(flightplans); save(); }
+}
+
+// init app
+seedIfEmpty(); init(); updateAtcUI();
+
+</script>
 </body>
 </html>
