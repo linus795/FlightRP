@@ -2,7 +2,7 @@
 <html lang="da">
 <head>
 <meta charset="utf-8">
-<title>PTFS ATIS - All-in-One Flightplan Manager</title>
+<title>PTFS ATIS - All-in-One (ATC-protected delete + Global Chat)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   :root{--bg:#0b1220;--card:#0f1724;--accent:#06b6d4;--muted:#94a3b8;--ok:#16a34a;--warn:#f97316;--danger:#ef4444}
@@ -10,7 +10,7 @@
   body{margin:0;font-family:Inter, Arial, sans-serif;background:linear-gradient(180deg,var(--bg),#07101a);color:#e6eef6;padding:18px}
   header{display:flex;align-items:center;justify-content:space-between;gap:12px}
   h1{margin:0;color:var(--accent);font-size:20px}
-  .container{display:grid;grid-template-columns:360px 1fr;gap:18px;margin-top:16px}
+  .container{display:grid;grid-template-columns:380px 1fr;gap:18px;margin-top:16px}
   .panel{background:var(--card);padding:14px;border-radius:10px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
   label{display:block;font-size:13px;color:var(--muted);margin-top:8px}
   input,select,textarea,button{width:100%;padding:8px;border-radius:8px;border:none;background:#071428;color:inherit}
@@ -40,13 +40,18 @@
   .row{display:flex;gap:8px;align-items:center}
   .icon{width:36px;height:36px;border-radius:8px;background:#022235;display:flex;align-items:center;justify-content:center}
   .import-area{height:120px}
+  /* chat */
+  .chat{display:flex;flex-direction:column;gap:8px;height:320px}
+  .chat-messages{flex:1;overflow:auto;padding:8px;border-radius:8px;background:#06101a}
+  .chat-message{padding:8px;border-radius:8px;margin-bottom:6px;background:linear-gradient(180deg,#071826,#05121a)}
+  .chat-meta{font-size:12px;color:var(--muted)}
 </style>
 </head>
 <body>
 <header>
   <div>
     <h1>PTFS ATIS — All-in-One</h1>
-    <div class="muted">Opret, rediger, filtrer, eksportér og administrér alle flightplans lokalt (LocalStorage)</div>
+    <div class="muted">Opret, rediger, filtrer, eksportér og administrér flightplans. Kun ATC kan slette. Global chat pr. lufthavn.</div>
   </div>
   <div class="controls">
     <div class="toolbar">
@@ -125,6 +130,24 @@
         <button id="deselect-all">Fravælg</button>
       </div>
     </div>
+
+    <div class="panel" style="margin-top:12px">
+      <h3>Global Chat (pr. lufthavn / Alle)</h3>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <select id="chat-filter-airport"><option value="ALL">ALL (global)</option></select>
+        <input id="chat-filter-q" placeholder="Søg i chat...">
+        <button id="chat-clear">Ryd chat (ATC only)</button>
+      </div>
+      <div class="chat">
+        <div id="chat-messages" class="chat-messages"></div>
+        <div style="display:flex;gap:8px">
+          <select id="chat-airport"></select>
+          <input id="chat-name" placeholder="Navn / Callsign" style="width:180px">
+          <input id="chat-text" placeholder="Skriv besked...">
+          <button id="chat-send">Send</button>
+        </div>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -141,9 +164,9 @@
 </div>
 
 <script>
-/* All-in-one client-side Flightplan Manager
+/* Client-side Flightplan Manager with ATC-protected deletions and Global Chat
    - Persistence: localStorage
-   - Features: create, edit, delete, unique squawk generator, status updates, filters, search, export/import, CSV, ATC login (local), bulk select
+   - Only logged-in ATC (PIN 1234) may delete flightplans or clear DB / chat
 */
 
 const DEFAULT_AIRPORTS = [
@@ -178,6 +201,16 @@ const sortSelect = document.getElementById('sort');
 const modal = document.getElementById('modal');
 const importJson = document.getElementById('import-json');
 
+// chat DOM
+const chatMessages = document.getElementById('chat-messages');
+const chatAirport = document.getElementById('chat-airport');
+const chatFilterAirport = document.getElementById('chat-filter-airport');
+const chatName = document.getElementById('chat-name');
+const chatText = document.getElementById('chat-text');
+const chatSend = document.getElementById('chat-send');
+const chatFilterQ = document.getElementById('chat-filter-q');
+const chatClear = document.getElementById('chat-clear');
+
 // buttons
 const btnExport = document.getElementById('btn-export');
 const btnImport = document.getElementById('btn-import');
@@ -202,11 +235,13 @@ const eta = document.getElementById('eta');
 const rules = document.getElementById('rules');
 
 // storage keys
-const KEY = 'ptfs_flightplans_v1';
-const KEY_ATC = 'ptfs_atc_v1';
+const KEY = 'ptfs_flightplans_v2';
+const KEY_ATC = 'ptfs_atc_v2';
+const KEY_CHAT = 'ptfs_chat_v1';
 
 let flightplans = load();
 let atc = loadAtc();
+let chat = loadChat();
 let selectedIds = new Set();
 
 // init
@@ -214,6 +249,7 @@ function init(){
   populateAirports();
   populateFilters();
   render();
+  renderChat();
 }
 
 function populateAirports(){
@@ -223,25 +259,30 @@ function populateAirports(){
     arr.appendChild(opt.cloneNode(true));
     atcAirport.appendChild(opt.cloneNode(true));
     filterAirport.appendChild(opt.cloneNode(true));
+    chatAirport.appendChild(option(a.code,a.code+' — '+a.name));
+    chatFilterAirport.appendChild(option(a.code,a.code+' — '+a.name));
+    filterAirport.appendChild(opt.cloneNode(true));
   });
+  // add ALL option to chat selects
+  chatAirport.insertBefore(option('ALL','ALL (global)'), chatAirport.firstChild);
+  chatFilterAirport.insertBefore(option('ALL','ALL (global)'), chatFilterAirport.firstChild);
 }
-function populateFilters(){
-  // add empty default already present
-}
-
+function populateFilters(){ }
 function option(value,text){const o=document.createElement('option');o.value=value;o.textContent=text;return o}
 
 function save(){localStorage.setItem(KEY, JSON.stringify(flightplans));}
 function load(){try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){return []}}
 function saveAtc(){localStorage.setItem(KEY_ATC, JSON.stringify(atc));}
 function loadAtc(){try{return JSON.parse(localStorage.getItem(KEY_ATC)||'null')}catch(e){return null}}
+function saveChat(){localStorage.setItem(KEY_CHAT, JSON.stringify(chat));}
+function loadChat(){try{return JSON.parse(localStorage.getItem(KEY_CHAT)||'[]')}catch(e){return []}}
 
 function uid(){return 'fp_' + Math.random().toString(36).slice(2,9)}
+function mid(){return 'm_' + Math.random().toString(36).slice(2,9)}
 
 function uniqueSquawk(){
   const used = new Set(flightplans.map(f=>String(f.squawk)));
-  let s;
-  do{s = Math.floor(1000 + Math.random()*9000).toString()}while(used.has(s));
+  let s; do{s = Math.floor(1000 + Math.random()*9000).toString()}while(used.has(s));
   return s;
 }
 
@@ -275,14 +316,10 @@ fpForm.addEventListener('submit', (e)=>{
 resetBtn.addEventListener('click', resetForm);
 function resetForm(){fpId.value='';fpForm.reset();}
 
-btnAssignSquawk.addEventListener('click', ()=>{
-  const s = uniqueSquawk();
-  alert('Tildelt squawk: ' + s);
-});
+btnAssignSquawk.addEventListener('click', ()=>{const s = uniqueSquawk();alert('Tildelt squawk: ' + s);});
 
 // render
 function render(){
-  // filters
   const qv = q.value.trim().toLowerCase();
   const fa = filterAirport.value;
   const fs = filterStatus.value;
@@ -293,40 +330,27 @@ function render(){
   if(fa) list = list.filter(f=>f.dep===fa || f.arr===fa);
   if(fs) list = list.filter(f=>f.status===fs);
 
-  // sort
   if(sort==='time_desc') list.sort((a,b)=>b.time-a.time);
   if(sort==='time_asc') list.sort((a,b)=>a.time-b.time);
   if(sort==='eta_asc') list.sort((a,b)=>parseEta(a.eta)-parseEta(b.eta));
   if(sort==='eta_desc') list.sort((a,b)=>parseEta(b.eta)-parseEta(a.eta));
 
-  // populate
   plansEl.innerHTML='';
   list.forEach(f=>plansEl.appendChild(renderPlan(f)));
 }
 
-function parseEta(t){
-  if(!t) return Infinity;
-  const m = t.match(/^(\d{1,2}):(\d{2})$/);
-  if(!m) return Infinity;
-  return parseInt(m[1])*60 + parseInt(m[2]);
-}
+function parseEta(t){ if(!t) return Infinity; const m = t.match(/^(\d{1,2}):(\d{2})$/); if(!m) return Infinity; return parseInt(m[1])*60 + parseInt(m[2]); }
 
 function renderPlan(f){
-  const li = document.createElement('li');
-  li.className='plan';
+  const li = document.createElement('li'); li.className='plan';
   const row = document.createElement('div'); row.className='plan-row';
-  const left = document.createElement('div');
-  left.innerHTML = `<strong>${escapeHtml(f.callsign)}</strong> <span class="muted">${escapeHtml(f.type)}</span><div class="muted small">${f.dep} → ${f.arr} • ETA ${f.eta || '-'} • ${f.rules}</div>`;
-  const right = document.createElement('div');
-  right.className='tags';
+  const left = document.createElement('div'); left.innerHTML = `<strong>${escapeHtml(f.callsign)}</strong> <span class="muted">${escapeHtml(f.type)}</span><div class="muted small">${f.dep} → ${f.arr} • ETA ${f.eta || '-'} • ${f.rules}</div>`;
+  const right = document.createElement('div'); right.className='tags';
   const t1 = document.createElement('span'); t1.className='tag sq'; t1.textContent = 'Squawk: ' + f.squawk;
   const t2 = document.createElement('span'); t2.className='tag alt'; t2.textContent = 'FL' + (f.alt||'-');
   right.appendChild(t1); right.appendChild(t2);
+  row.appendChild(left); row.appendChild(right); li.appendChild(row);
 
-  row.appendChild(left); row.appendChild(right);
-  li.appendChild(row);
-
-  // actions
   const actionRow = document.createElement('div'); actionRow.style.marginTop='8px'; actionRow.className='row';
   const actions = document.createElement('div'); actions.className='actions';
   ['Filed','Cleared','Taxi','Airborne'].forEach(s=>{
@@ -340,7 +364,8 @@ function renderPlan(f){
   });
 
   const edit = document.createElement('button'); edit.textContent='✏️'; edit.title='Rediger'; edit.addEventListener('click', ()=>loadForEdit(f.id));
-  const del = document.createElement('button'); del.textContent='🗑️'; del.title='Slet'; del.addEventListener('click', ()=>{if(confirm('Slet flightplan?')){deletePlan(f.id)}});
+  const del = document.createElement('button'); del.textContent='🗑️'; del.title='Slet';
+  del.addEventListener('click', ()=>{ if(!isAtcLoggedIn()){return alert('Kun ATC kan slette flightplans. Log ind med korrekt PIN.')} if(confirm('Slet flightplan?')){deletePlan(f.id)} });
 
   actions.appendChild(edit); actions.appendChild(del);
 
@@ -348,23 +373,18 @@ function renderPlan(f){
   const cb = document.createElement('input'); cb.type='checkbox'; cb.style.marginRight='8px'; cb.checked = selectedIds.has(f.id);
   cb.addEventListener('change', ()=>{if(cb.checked) selectedIds.add(f.id); else selectedIds.delete(f.id)});
 
-  actionRow.appendChild(cb); actionRow.appendChild(actions);
-  li.appendChild(actionRow);
+  actionRow.appendChild(cb); actionRow.appendChild(actions); li.appendChild(actionRow);
 
-  // details
-  const details = document.createElement('div'); details.className='muted small'; details.style.marginTop='6px';
-  details.textContent = `Status: ${f.status} • Oprettet: ${new Date(f.time).toLocaleString()}`;
+  const details = document.createElement('div'); details.className='muted small'; details.style.marginTop='6px'; details.textContent = `Status: ${f.status} • Oprettet: ${new Date(f.time).toLocaleString()}`;
   li.appendChild(details);
-
   return li;
 }
 
 function escapeHtml(s){return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;" })[c])}
 
-function updateStatus(id,status){
-  const i = flightplans.findIndex(f=>f.id===id); if(i<0) return; flightplans[i].status = status; save(); render();}
-function deletePlan(id){flightplans = flightplans.filter(f=>f.id!==id); save(); render();}
-function loadForEdit(id){const f = flightplans.find(x=>x.id===id); if(!f) return; fpId.value=f.id; callsign.value=f.callsign; typeField.value=f.type; dep.value=f.dep; arr.value=f.arr; alt.value=f.alt; eta.value=f.eta; rules.value=f.rules; window.scrollTo({top:0,behavior:'smooth'});}
+function updateStatus(id,status){ const i = flightplans.findIndex(f=>f.id===id); if(i<0) return; flightplans[i].status = status; save(); render(); }
+function deletePlan(id){ if(!isAtcLoggedIn()) return alert('Kun ATC kan slette'); flightplans = flightplans.filter(f=>f.id!==id); save(); render(); }
+function loadForEdit(id){ const f = flightplans.find(x=>x.id===id); if(!f) return; fpId.value=f.id; callsign.value=f.callsign; typeField.value=f.type; dep.value=f.dep; arr.value=f.arr; alt.value=f.alt; eta.value=f.eta; rules.value=f.rules; window.scrollTo({top:0,behavior:'smooth'}); }
 
 // search, filters
 q.addEventListener('input', debounce(render,250));
@@ -373,27 +393,10 @@ filterStatus.addEventListener('change', render);
 sortSelect.addEventListener('change', render);
 
 // export/import
-btnExport.addEventListener('click', ()=>{
-  const dataStr = JSON.stringify(flightplans, null, 2);
-  download('flightplans.json', dataStr);
-});
-
+btnExport.addEventListener('click', ()=>{ const dataStr = JSON.stringify(flightplans, null, 2); download('flightplans.json', dataStr); });
 btnImport.addEventListener('click', ()=>{modal.classList.add('open'); importJson.value='';});
 btnCloseModal.addEventListener('click', ()=>modal.classList.remove('open'));
-btnDoImport.addEventListener('click', ()=>{
-  try{
-    const parsed = JSON.parse(importJson.value);
-    if(!Array.isArray(parsed)) throw new Error('JSON skal være et array');
-    // accept and merge, but ensure ids
-    parsed.forEach(p=>{
-      if(!p.id) p.id = uid();
-      if(!p.squawk) p.squawk = uniqueSquawk();
-      p.time = p.time || Date.now();
-      flightplans.unshift(p);
-    });
-    save(); render(); modal.classList.remove('open'); alert('Import færdig');
-  }catch(e){alert('Import fejl: ' + e.message)}
-});
+btnDoImport.addEventListener('click', ()=>{ try{ const parsed = JSON.parse(importJson.value); if(!Array.isArray(parsed)) throw new Error('JSON skal være et array'); parsed.forEach(p=>{ if(!p.id) p.id = uid(); if(!p.squawk) p.squawk = uniqueSquawk(); p.time = p.time || Date.now(); flightplans.unshift(p); }); save(); render(); modal.classList.remove('open'); alert('Import færdig'); }catch(e){alert('Import fejl: ' + e.message)} });
 
 // CSV export
 btnExportCsv.addEventListener('click', ()=>{
@@ -402,22 +405,15 @@ btnExportCsv.addEventListener('click', ()=>{
   const csv = header.join(',') + '\n' + rows.join('\n');
   download('flightplans.csv', csv);
 });
-
 function escapeCsv(s){if(s.includes(',')||s.includes('"')||s.includes('\n')) return '"'+s.replace(/"/g,'""')+'"'; return s}
-
-// download util
-function download(filename, text){const a=document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type:'text/plain'})); a.download = filename; document.body.appendChild(a); a.click(); a.remove();}
 
 // select/deselect/bulk delete
 btnSelectAll.addEventListener('click', ()=>{flightplans.forEach(f=>selectedIds.add(f.id)); render();});
 btnDeselectAll.addEventListener('click', ()=>{selectedIds.clear(); render();});
-btnBulkDelete.addEventListener('click', ()=>{
-  if(selectedIds.size===0) return alert('Ingen valgte');
-  if(!confirm('Slet valgte?')) return; flightplans = flightplans.filter(f=>!selectedIds.has(f.id)); selectedIds.clear(); save(); render();
-});
+btnBulkDelete.addEventListener('click', ()=>{ if(selectedIds.size===0) return alert('Ingen valgte'); if(!isAtcLoggedIn()) return alert('Kun ATC kan slette flightplans'); if(!confirm('Slet valgte?')) return; flightplans = flightplans.filter(f=>!selectedIds.has(f.id)); selectedIds.clear(); save(); render(); });
 
 // clear DB
-btnClear.addEventListener('click', ()=>{if(confirm('Slet alle flightplans permanent?')){flightplans=[]; save(); render();}});
+btnClear.addEventListener('click', ()=>{ if(!isAtcLoggedIn()) return alert('Kun ATC kan slette alt'); if(confirm('Slet alle flightplans permanent?')){flightplans=[]; save(); render();}});
 
 // atc login (local)
 atcLogin.addEventListener('click', ()=>{
@@ -429,20 +425,32 @@ atcLogin.addEventListener('click', ()=>{
 });
 atcLogout.addEventListener('click', ()=>{atc=null; saveAtc(); updateAtcUI(); render();});
 
-function updateAtcUI(){if(atc){atcLogin.style.display='none'; atcLogout.style.display='inline-block'; document.getElementById('atc-name').value = atc.name; document.getElementById('atc-pin').value=''; alert('ATC logged ind: ' + atc.name + ' @ ' + atc.airport);} else {atcLogin.style.display='inline-block'; atcLogout.style.display='none';}}
+function updateAtcUI(){ if(atc){ atcLogin.style.display='none'; atcLogout.style.display='inline-block'; document.getElementById('atc-name').value = atc.name; document.getElementById('atc-pin').value=''; } else { atcLogin.style.display='inline-block'; atcLogout.style.display='none'; }}
+function isAtcLoggedIn(){ return !!atc; }
+
+// chat logic
+chatSend.addEventListener('click', ()=>{ const txt = chatText.value.trim(); const name = chatName.value.trim() || (atc?atc.name:'Anon'); const airport = chatAirport.value || 'ALL'; if(!txt) return; const m = {id:mid(), author:name, airport, text:txt, time:Date.now()}; chat.push(m); saveChat(); chatText.value=''; renderChat(); });
+chatFilterQ.addEventListener('input', debounce(renderChat,200));
+chatFilterAirport.addEventListener('change', renderChat);
+chatClear.addEventListener('click', ()=>{ if(!isAtcLoggedIn()) return alert('Kun ATC kan rydde chat'); if(!confirm('Ryd ALL chat?')) return; chat=[]; saveChat(); renderChat(); });
+
+function renderChat(){ const qv = chatFilterQ.value.trim().toLowerCase(); const fa = chatFilterAirport.value || 'ALL'; chatMessages.innerHTML='';
+  chat.slice().reverse().forEach(m=>{ if(fa !== 'ALL' && m.airport !== fa) return; if(qv && !(m.text.toLowerCase().includes(qv) || m.author.toLowerCase().includes(qv))) return; const div = document.createElement('div'); div.className='chat-message'; div.innerHTML = `<div><strong>${escapeHtml(m.author)}</strong> <span class="chat-meta">${m.airport} • ${new Date(m.time).toLocaleString()}</span></div><div style="margin-top:6px">${escapeHtml(m.text)}</div>`; const del = document.createElement('button'); del.textContent='🗑️'; del.style.marginTop='6px'; del.addEventListener('click', ()=>{ if(!isAtcLoggedIn()) return alert('Kun ATC kan slette chatbeskeder'); if(confirm('Slet besked?')){ chat = chat.filter(x=>x.id!==m.id); saveChat(); renderChat(); }}); if(isAtcLoggedIn()) div.appendChild(del); chatMessages.appendChild(div); }); }
+
+// chat airport default
+chatAirport.value = 'ALL';
+
+// download util
+function download(filename, text){const a=document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type:'text/plain'})); a.download = filename; document.body.appendChild(a); a.click(); a.remove();}
 
 // debounce
 function debounce(fn,ms){let t; return (...a)=>{clearTimeout(t); t=setTimeout(()=>fn(...a),ms)}}
 
 // helpers
-function seedIfEmpty(){ if(flightplans.length===0){ // optional sample data
-    const sample = [
-      {id:uid(),callsign:'PTF001',type:'B738',dep:'IRFD',arr:'ITKO',alt:'350',eta:'14:30',rules:'IFR',squawk:uniqueSquawk(),status:'Filed',time:Date.now()-1000*60*60},
-      {id:uid(),callsign:'SKY12',type:'C172',dep:'IPPH',arr:'IRFD',alt:'050',eta:'15:20',rules:'VFR',squawk:uniqueSquawk(),status:'Cleared',time:Date.now()-1000*60*30}
-    ]; flightplans = sample.concat(flightplans); save(); }
+function seedIfEmpty(){ if(flightplans.length===0){ const sample = [ {id:uid(),callsign:'PTF001',type:'B738',dep:'IRFD',arr:'ITKO',alt:'350',eta:'14:30',rules:'IFR',squawk:uniqueSquawk(),status:'Filed',time:Date.now()-1000*60*60}, {id:uid(),callsign:'SKY12',type:'C172',dep:'IPPH',arr:'IRFD',alt:'050',eta:'15:20',rules:'VFR',squawk:uniqueSquawk(),status:'Cleared',time:Date.now()-1000*60*30} ]; flightplans = sample.concat(flightplans); save(); }
+  if(chat.length===0){ chat.push({id:mid(),author:'System',airport:'ALL',text:'Velkommen til PTFS global chat — ATC kan moderere beskeder.',time:Date.now()}); saveChat(); }
 }
 
-// init app
 seedIfEmpty(); init(); updateAtcUI();
 
 </script>
