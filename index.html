@@ -2,7 +2,7 @@
 <html lang="da">
 <head>
 <meta charset="utf-8">
-<title>PTFS ATIS - Flightplan Manager</title>
+<title>PTFS ATIS - Flightplan Manager (Fixed)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   body { font-family: Arial, sans-serif; background:#0f172a; color:white; padding:20px; }
@@ -12,9 +12,10 @@
   input, select, button { width:100%; padding:8px; border-radius:4px; border:none; margin-top:5px; }
   button { cursor:pointer; font-weight:bold; }
   ul { list-style:none; padding:0; }
-  li { background:#1e293b; margin:5px 0; padding:10px; border-radius:6px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; position:relative; }
+  li { background:#1e293b; margin:5px 0; padding:10px; border-radius:6px; display:flex; flex-direction:column; position:relative; }
   .hidden { display:none; }
-  .status-btn { margin-left:5px; padding:4px 6px; border-radius:4px; font-size:12px; font-weight:bold; color:white; }
+  .status-btn { margin-right:5px; padding:4px 6px; border-radius:4px; font-size:12px; font-weight:bold; color:white; }
+  .status-row { margin-top:8px; }
   .tooltip { position:absolute; background:#1e293b; padding:5px 8px; border-radius:4px; font-size:12px; top:-25px; left:0; display:none; white-space:nowrap; }
   li:hover .tooltip { display:block; }
 </style>
@@ -23,7 +24,6 @@
 
 <h1>PTFS ATIS - Flightplans</h1>
 
-<!-- Pilot flightplan form -->
 <form id="fp-form">
   <label>Callsign <input id="callsign" required></label>
   <label>Aircraft type <input id="type" required></label>
@@ -79,11 +79,10 @@
 <h2>Active Flightplans</h2>
 <ul id="plans"></ul>
 
-<!-- ATC Login -->
 <div class="panel">
   <h2>ATC Login</h2>
-  <label>Navn <input type="text" id="atc-name" placeholder="ATC navn"></label>
-  <label>PIN <input type="password" id="atc-pin" placeholder="Enter ATC PIN"></label>
+  <label>Navn <input type="text" id="atc-name"></label>
+  <label>PIN <input type="password" id="atc-pin"></label>
   <label>Lufthavn
     <select id="atc-airport">
       <option value="IRFD">Greater Rockford Airport</option>
@@ -113,10 +112,9 @@
   <button id="login-btn">Login</button>
 </div>
 
-<!-- ATC Panel -->
 <div id="atc-panel" class="panel hidden">
   <h2>ATC Panel</h2>
-  <p>Velkommen, <span id="atc-display"></span>! Farvekodede status-knapper:</p>
+  <p>Velkommen, <span id="atc-display"></span>!</p>
   <ul id="atc-plans"></ul>
 </div>
 
@@ -136,97 +134,95 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-function generateSquawk() {
-  return Math.floor(1000 + Math.random()*9000);
-}
+function generateSquawk() { return Math.floor(1000 + Math.random()*9000); }
 
-// Submit flightplan
 document.getElementById("fp-form").addEventListener("submit", async (e)=>{
   e.preventDefault();
   const plan = {
-    callsign: document.getElementById("callsign").value,
-    type: document.getElementById("type").value,
-    dep: document.getElementById("dep").value,
-    arr: document.getElementById("arr").value,
-    alt: document.getElementById("alt").value,
-    eta: document.getElementById("eta").value,
-    rules: document.getElementById("rules").value,
+    callsign: callsign.value.trim(),
+    type: type.value.trim(),
+    dep: dep.value,
+    arr: arr.value,
+    alt: alt.value.trim(),
+    eta: eta.value.trim(),
+    rules: rules.value,
     squawk: generateSquawk(),
     status: "Filed",
-    time: new Date().toISOString()
+    time: Date.now()
   };
   await db.collection("flightplans").add(plan);
-  alert("Flightplan submitted ✅ Squawk: "+plan.squawk);
+  alert("Flightplan submitted! Squawk: " + plan.squawk);
   e.target.reset();
 });
 
-// Live pilot view
-db.collection("flightplans").orderBy("time","desc").onSnapshot(snapshot=>{
-  const list = document.getElementById("plans");
+db.collection("flightplans").orderBy("time","desc").onSnapshot(snap=>{
+  const list = plans;
   list.innerHTML="";
-  snapshot.forEach(doc=>{
+  snap.forEach(doc=>{
     const d = doc.data();
     const li = document.createElement("li");
-    li.textContent = `${d.callsign} | ${d.type} | ${d.dep}→${d.arr} | FL:${d.alt} | ETA:${d.eta} | ${d.rules} | Squawk:${d.squawk}`;
+    li.innerHTML = `${d.callsign} | ${d.type} | ${d.dep}→${d.arr} | FL:${d.alt} | ETA:${d.eta} | ${d.rules} | Squawk:${d.squawk} | Status:${d.status}`;
     list.appendChild(li);
   });
 });
 
 let currentATC = null;
 
-// ATC login
-document.getElementById("login-btn").addEventListener("click", ()=>{
-  const name = document.getElementById("atc-name").value;
+document.getElementById("login-btn").addEventListener("click",()=>{
   const pin = document.getElementById("atc-pin").value;
-  const airport = document.getElementById("atc-airport").value;
-  const role = document.getElementById("atc-role").value;
-  if(pin === "1234"){
-    currentATC = {name, airport, role};
-    document.getElementById("atc-panel").classList.remove("hidden");
-    document.getElementById("atc-display").textContent = `${name} (${role})`;
-    loadAtcPanel();
-  } else alert("Forkert PIN!");
+  if(pin !== "1234") return alert("Forkert PIN!");
+  currentATC = {
+    name: document.getElementById("atc-name").value,
+    airport: document.getElementById("atc-airport").value,
+    role: document.getElementById("atc-role").value
+  };
+  atc-panel.classList.remove("hidden");
+  atc-display.textContent = `${currentATC.name} (${currentATC.role})`;
+  loadAtcPanel();
 });
 
-// ATC panel – farver + tooltip
 function loadAtcPanel(){
-  db.collection("flightplans").orderBy("time","desc").onSnapshot(snapshot=>{
-    const list = document.getElementById("atc-plans");
+  db.collection("flightplans").orderBy("time","desc").onSnapshot(snap=>{
+    const list = atc-plans;
     list.innerHTML="";
-    snapshot.forEach(doc=>{
+    snap.forEach(doc=>{
       const d = doc.data();
       if(d.dep !== currentATC.airport && d.arr !== currentATC.airport) return;
 
       const li = document.createElement("li");
-      const fromTo = d.dep === currentATC.airport ? `Departure from here → ${d.arr}` : `Arrival from ${d.dep} → here`;
-      li.textContent = `${d.callsign} | ${d.type} | ${fromTo} | FL:${d.alt} | ETA:${d.eta} | ${d.rules} | Squawk:${d.squawk} | Status:`;
-
-      // Tooltip
       const tooltip = document.createElement("div");
       tooltip.className = "tooltip";
-      tooltip.textContent = `Departure: ${d.dep} | Arrival: ${d.arr} | ETA: ${d.eta}`;
+      tooltip.textContent = `ETA: ${d.eta}`;
+
+      li.innerHTML = `${d.callsign} | ${d.dep}→${d.arr} | FL:${d.alt} | Squawk:${d.squawk}`;
       li.appendChild(tooltip);
 
-      const statuses = {"Filed":"#38bdf8","Cleared":"#facc15","Taxi":"#f97316","Airborne":"#22c55e"};
-      Object.keys(statuses).forEach(s=>{
+      const statusRow = document.createElement("div");
+      statusRow.className = "status-row";
+
+      const statuses = { Filed:"#38bdf8", Cleared:"#facc15", Taxi:"#f97316", Airborne:"#22c55e" };
+
+      for(const s in statuses){
         const btn = document.createElement("button");
-        btn.className="status-btn";
         btn.textContent = s;
-        btn.style.background=statuses[s];
-        btn.onclick=()=>db.collection("flightplans").doc(doc.id).update({status:s});
-        li.appendChild(btn);
-      });
+        btn.className = "status-btn";
+        btn.style.background = statuses[s];
+        btn.onclick = ()=> db.collection("flightplans").doc(doc.id).update({status:s});
+        statusRow.appendChild(btn);
+      }
 
       const del = document.createElement("button");
-      del.textContent="❌ Slet";
+      del.textContent="Delete";
       del.style.background="#ef4444";
-      del.onclick=()=>db.collection("flightplans").doc(doc.id).delete();
-      li.appendChild(del);
+      del.onclick=()=> db.collection("flightplans").doc(doc.id).delete();
 
+      statusRow.appendChild(del);
+      li.appendChild(statusRow);
       list.appendChild(li);
     });
   });
 }
 </script>
+
 </body>
 </html>
